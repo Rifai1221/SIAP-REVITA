@@ -163,35 +163,36 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="no-print sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs w-full max-w-full transition-all">
-      <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 box-border min-w-0">
-        {/* Main Navbar Row */}
-        <div className="flex items-center justify-between h-14 sm:h-16 gap-1.5 sm:gap-4 w-full min-w-0">
-          
-          {/* Zone 1: Wordmark & Brand with dynamic active status */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className="flex items-center gap-2 sm:gap-2.5 text-left group focus:outline-none"
-              title="Kembali ke Dashboard Utama"
-            >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white font-extrabold text-sm sm:text-base shadow-sm ring-2 ring-emerald-500/20 group-hover:scale-105 transition-transform shrink-0">
-                SR
-              </div>
-              <div className="hidden sm:block min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 leading-tight truncate">
-                    SIAP-Revita
-                  </span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-1.5 py-0.2 rounded-full border border-emerald-200">
-                    2026
+      <div className="w-full max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 box-border min-w-0 overscroll-x-contain">
+        {/* Main Navbar Row - Horizontally scrollable if contents exceed screen width */}
+        <div className="w-full max-w-full overflow-x-auto overflow-y-visible py-0 scrollbar-none touch-pan-x overscroll-x-contain">
+          <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4 min-w-max sm:min-w-0 sm:w-full">
+            
+            {/* Zone 1: Wordmark & Brand with dynamic active status */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className="flex items-center gap-2 sm:gap-2.5 text-left group focus:outline-none"
+                title="Kembali ke Dashboard Utama"
+              >
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white font-extrabold text-sm sm:text-base shadow-sm ring-2 ring-emerald-500/20 group-hover:scale-105 transition-transform shrink-0">
+                  SR
+                </div>
+                <div className="hidden sm:block min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 leading-tight truncate">
+                      SIAP-Revita
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-1.5 py-0.2 rounded-full border border-emerald-200">
+                      2026
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 block leading-none font-medium truncate mt-0.5">
+                    P2SP Revitalisasi Terpadu
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-500 block leading-none font-medium truncate mt-0.5">
-                  P2SP Revitalisasi Terpadu
-                </span>
-              </div>
-            </button>
-          </div>
+              </button>
+            </div>
 
           {/* Zone 2: Navigation Links for Desktop */}
           <nav className="hidden xl:flex items-center gap-1 shrink-0">
@@ -575,6 +576,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
         </div>
+      </div>
 
         {/* Dynamic Live Status & Metric Strip */}
         <div className="w-full max-w-full overflow-x-auto py-1.5 px-1 border-t border-slate-100 scrollbar-none touch-pan-x overscroll-x-contain">
