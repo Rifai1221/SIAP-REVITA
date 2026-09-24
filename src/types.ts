@@ -223,10 +223,12 @@ export interface PersonilP2SP {
   alamat?: string;
 }
 
+export type JenjangSekolah = 'TK/PAUD' | 'SD' | 'SMP/MTs' | 'SMA/SMK' | 'SLB' | 'Lainnya' | string;
+
 export interface DataSekolah {
   namaSekolah: string;
   npsn: string;
-  jenjang: 'SD' | 'SMP' | 'SMA' | 'SMK' | 'SLB' | 'Lainnya';
+  jenjang: JenjangSekolah;
   statusSekolah: 'NEGERI' | 'SWASTA';
   nomorSkP2sp: string;
   tanggalSkP2sp: string;
@@ -294,7 +296,7 @@ export type NavTab =
 export interface SchoolWorkspaceProfile {
   npsn: string;
   namaSekolah: string;
-  jenjang: 'SD' | 'SMP' | 'SMA' | 'SMK' | 'SLB' | 'Lainnya';
+  jenjang: JenjangSekolah;
   kabupatenKota: string;
   pin?: string; // 4-digit PIN access key
   isPinProtected: boolean;

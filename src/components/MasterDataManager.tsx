@@ -270,12 +270,12 @@ export const MasterDataManager: React.FC<MasterDataManagerProps> = () => {
                 }
                 className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-slate-800 focus:ring-1 focus:ring-emerald-600 outline-none"
               >
-                <option value="SD">SD (Sekolah Dasar)</option>
-                <option value="SMP">SMP (Sekolah Menengah Pertama)</option>
-                <option value="SMA">SMA (Sekolah Menengah Atas)</option>
-                <option value="SMK">SMK (Sekolah Menengah Kejuruan)</option>
+                <option value="TK/PAUD">TK/PAUD (Taman Kanak-Kanak / PAUD)</option>
+                <option value="SD">SD (Sekolah Dasar / MI)</option>
+                <option value="SMP/MTs">SMP/MTs (Sekolah Menengah Pertama / MTs)</option>
+                <option value="SMA/SMK">SMA/SMK (Sekolah Menengah Atas / Kejuruan / MA)</option>
                 <option value="SLB">SLB (Sekolah Luar Biasa)</option>
-                <option value="Lainnya">Lainnya / Madrasah</option>
+                <option value="Lainnya">Lainnya / Pusat Kegiatan Belajar</option>
               </select>
             </div>
 

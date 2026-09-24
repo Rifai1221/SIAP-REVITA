@@ -67,7 +67,7 @@ export const WorkspaceManagerModal: React.FC<WorkspaceManagerModalProps> = ({
   const [isAddingSchool, setIsAddingSchool] = useState<boolean>(false);
   const [newNpsn, setNewNpsn] = useState<string>('');
   const [newNamaSekolah, setNewNamaSekolah] = useState<string>('');
-  const [newJenjang, setNewJenjang] = useState<'SD' | 'SMP' | 'SMA' | 'SMK' | 'SLB'>('SD');
+  const [newJenjang, setNewJenjang] = useState<'TK/PAUD' | 'SD' | 'SMP/MTs' | 'SMA/SMK' | 'SLB' | 'Lainnya'>('TK/PAUD');
   const [newKabupaten, setNewKabupaten] = useState<string>('Kabupaten Bogor');
   const [newPagu, setNewPagu] = useState<number>(150000000);
   const [newPin, setNewPin] = useState<string>('1234');
@@ -613,17 +613,18 @@ export const WorkspaceManagerModal: React.FC<WorkspaceManagerModalProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block font-semibold text-slate-700 mb-1">Jenjang</label>
+                        <label className="block font-semibold text-slate-700 mb-1">Jenjang Pendidikan</label>
                         <select
                           value={newJenjang}
                           onChange={(e) => setNewJenjang(e.target.value as any)}
-                          className="w-full p-2.5 border border-slate-300 rounded-lg bg-white"
+                          className="w-full p-2.5 border border-slate-300 rounded-lg bg-white font-medium"
                         >
-                          <option value="SD">SD (Sekolah Dasar)</option>
-                          <option value="SMP">SMP (Sekolah Menengah Pertama)</option>
-                          <option value="SMA">SMA (Sekolah Menengah Atas)</option>
-                          <option value="SMK">SMK (Kejuruan)</option>
-                          <option value="SLB">SLB (Luar Biasa)</option>
+                          <option value="TK/PAUD">TK/PAUD (Taman Kanak-Kanak / PAUD)</option>
+                          <option value="SD">SD (Sekolah Dasar / MI)</option>
+                          <option value="SMP/MTs">SMP/MTs (Sekolah Menengah Pertama / MTs)</option>
+                          <option value="SMA/SMK">SMA/SMK (Sekolah Menengah Atas / Kejuruan / MA)</option>
+                          <option value="SLB">SLB (Sekolah Luar Biasa)</option>
+                          <option value="Lainnya">Lainnya / Pusat Kegiatan Belajar</option>
                         </select>
                       </div>
 
