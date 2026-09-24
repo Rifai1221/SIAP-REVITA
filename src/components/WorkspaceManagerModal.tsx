@@ -71,7 +71,7 @@ export const WorkspaceManagerModal: React.FC<WorkspaceManagerModalProps> = ({
   const [newKabupaten, setNewKabupaten] = useState<string>('Kabupaten Bogor');
   const [newPagu, setNewPagu] = useState<number>(150000000);
   const [newPin, setNewPin] = useState<string>('1234');
-  const [newTemplate, setNewTemplate] = useState<'sd_lengkap' | 'smp_rehab' | 'blank'>('sd_lengkap');
+  const [newTemplate, setNewTemplate] = useState<'sd_lengkap' | 'smp_rehab' | 'blank'>('blank');
   const [newTheme, setNewTheme] = useState<string>('emerald');
 
   // File Upload State

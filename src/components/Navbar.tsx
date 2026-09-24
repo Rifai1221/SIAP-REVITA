@@ -21,6 +21,8 @@ import {
   Unlock,
   Check,
   Plus,
+  Cloud,
+  CloudCheck,
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
 import { formatRupiah } from '../utils/terbilang';
@@ -54,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     switchWorkspace,
     exportProjectFile,
     hasUnsavedExportChanges,
+    cloudSyncStatus,
   } = useProject();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -86,26 +89,26 @@ export const Navbar: React.FC<NavbarProps> = ({
     projectInfo.dataSekolah?.namaSekolah || activeWorkspace?.namaSekolah || 'Sekolah Revitalisasi';
 
   return (
-    <header className="no-print sticky top-0 z-30 bg-white border-b border-slate-200 shadow-2xs">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
+    <header className="no-print sticky top-0 z-30 bg-white border-b border-slate-200 shadow-2xs w-full max-w-full">
+      <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 box-border min-w-0">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-1.5 sm:gap-4 w-full min-w-0">
           {/* Zone 1: Wordmark & Brand */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center text-white font-extrabold text-base shadow-xs">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-700 flex items-center justify-center text-white font-extrabold text-sm sm:text-base shadow-xs shrink-0">
               SR
             </div>
-            <div className="hidden sm:block">
-              <span className="text-base font-bold tracking-tight text-slate-900 block leading-tight">
+            <div className="hidden sm:block min-w-0">
+              <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 block leading-tight truncate">
                 SIAP-Revita
               </span>
-              <span className="text-[10px] text-slate-500 block leading-none font-medium">
+              <span className="text-[10px] text-slate-500 block leading-none font-medium truncate">
                 P2SP Revitalisasi Terpadu
               </span>
             </div>
           </div>
 
           {/* Zone 2: Navigation Links for Desktop */}
-          <nav className="hidden xl:flex items-center gap-1">
+          <nav className="hidden xl:flex items-center gap-1 shrink-0">
             {navLinks.map((link) => {
               const Icon = link.icon;
               const isActive = activeTab === link.id;
@@ -127,23 +130,52 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Zone 3: Multi-Workspace Switcher by NPSN & File Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0 min-w-0">
+            {/* Cloud Sync Status Indicator */}
+            <div
+              className="hidden md:flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border shrink-0 bg-slate-50 text-slate-600 border-slate-200"
+              title={
+                cloudSyncStatus === 'ONLINE_SYNCED'
+                  ? 'Data tersinkron otomatis ke Cloud Firestore & Penyimpanan Lokal'
+                  : cloudSyncStatus === 'SYNCING'
+                  ? 'Sedang menyinkronkan data ke Cloud...'
+                  : 'Penyimpanan Lokal Aktif'
+              }
+            >
+              {cloudSyncStatus === 'SYNCING' ? (
+                <>
+                  <Cloud className="w-3 h-3 text-sky-500 animate-pulse shrink-0" />
+                  <span className="hidden lg:inline text-sky-600">Menyimpan...</span>
+                </>
+              ) : cloudSyncStatus === 'ONLINE_SYNCED' ? (
+                <>
+                  <CloudCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span className="hidden lg:inline text-emerald-700 font-semibold">Cloud Aktif</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="hidden lg:inline text-slate-500">Lokal</span>
+                </>
+              )}
+            </div>
+
             {/* Multi-Workspace Switcher Dropdown */}
-            <div className="relative" ref={dropdownRef}>
+            <div className="relative min-w-0" ref={dropdownRef}>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-950 rounded-xl transition-all shadow-2xs text-xs font-medium max-w-[200px] sm:max-w-[260px]"
+                className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-950 rounded-xl transition-all shadow-2xs text-xs font-medium max-w-[125px] xs:max-w-[160px] sm:max-w-[210px] md:max-w-[260px] min-w-0"
                 title="Ganti Profil / Sekolah Aktif"
               >
-                <div className="w-6 h-6 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
+                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[9px] sm:text-[10px] shrink-0">
                   {activeWorkspace?.jenjang || 'SD'}
                 </div>
-                <div className="text-left truncate">
-                  <span className="font-bold text-slate-900 block truncate leading-tight text-xs">
+                <div className="text-left truncate min-w-0">
+                  <span className="font-bold text-slate-900 block truncate leading-tight text-[11px] sm:text-xs">
                     {currentSchoolName}
                   </span>
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-800 font-mono">
-                    <span>NPSN: {activeNpsn}</span>
+                  <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-emerald-800 font-mono truncate">
+                    <span className="truncate">NPSN: {activeNpsn === '20260001' ? 'Belum Diisi' : activeNpsn}</span>
                     {activeWorkspace?.isPinProtected ? (
                       <Lock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                     ) : (
@@ -151,18 +183,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                     )}
                   </div>
                 </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-emerald-700 shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-3 sm:w-3.5 h-3 sm:h-3.5 text-emerald-700 shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {/* Dropdown Menu */}
               {isDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
+                <div className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] max-w-xs sm:w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
                   <div className="px-3.5 py-2 border-b border-slate-100 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                         Ganti Profil Sekolah
                       </span>
-                      <span className="text-xs text-slate-600">Database prefix: <code className="text-emerald-700 font-mono">sekolah_[NPSN]_*</code></span>
+                      <span className="text-xs text-slate-600">Database: <code className="text-emerald-700 font-mono">sekolah_{activeNpsn}_*</code></span>
                     </div>
                     <button
                       onClick={() => {
@@ -195,19 +227,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                             isCur ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 truncate">
+                          <div className="flex items-center gap-2.5 truncate min-w-0">
                             <span className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold flex items-center justify-center shrink-0 border border-slate-200">
                               {ws.jenjang || 'SD'}
                             </span>
-                            <div className="truncate">
+                            <div className="truncate min-w-0">
                               <span className="block truncate text-xs">{ws.namaSekolah}</span>
-                              <span className="block text-[10px] text-slate-400 font-mono">
+                              <span className="block text-[10px] text-slate-400 font-mono truncate">
                                 NPSN: {ws.npsn} • {formatRupiah(ws.paguAnggaran)}
                               </span>
                             </div>
                           </div>
 
-                          <div className="shrink-0 flex items-center gap-1">
+                          <div className="shrink-0 flex items-center gap-1 ml-2">
                             {ws.isPinProtected && <Lock className="w-3 h-3 text-amber-600" />}
                             {isCur && <Check className="w-4 h-4 text-emerald-600" />}
                           </div>
@@ -235,7 +267,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Quick Button: Simpan / Download Berkas .revita */}
             <button
               onClick={() => exportProjectFile('revita')}
-              className="relative hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all shadow-2xs"
+              className="relative hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all shadow-2xs shrink-0"
               title="Simpan / Download Berkas Proyek (.revita) ke Komputer"
             >
               <FolderDown className="w-3.5 h-3.5 text-emerald-400" />
@@ -248,7 +280,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Quick Button: Buka Berkas */}
             <button
               onClick={() => onOpenWorkspaceManager('upload')}
-              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-2xs"
+              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-2xs shrink-0"
               title="Buka Berkas Sekolah (.revita / .json) dari Laptop / WhatsApp"
             >
               <Upload className="w-3.5 h-3.5 text-slate-500" />
@@ -258,17 +290,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Print LPJ Quick Action */}
             <button
               onClick={onPrintLPJ}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors shadow-xs shrink-0"
               title="Cetak Dokumen LPJ Resmi"
             >
-              <Printer className="w-3.5 h-3.5" />
+              <Printer className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden sm:inline">Cetak LPJ</span>
             </button>
 
             {/* Settings & Hub Trigger */}
             <button
               onClick={() => onOpenWorkspaceManager('switcher')}
-              className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
+              className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
               title="Kelola Profil Sekolah & Berkas"
               aria-label="Kelola Profil Sekolah & Berkas"
             >
@@ -277,7 +309,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={onOpenSettings}
-              className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
+              className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
               title="Pengaturan Identitas & Penandatangan"
               aria-label="Pengaturan Identitas & Penandatangan"
             >
@@ -286,26 +318,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Mobile Sub-Navigation Row */}
-        <div className="xl:hidden flex items-center gap-1 overflow-x-auto py-2 border-t border-slate-100 scrollbar-none">
-          {navLinks.map((link) => {
-            const Icon = link.icon;
-            const isActive = activeTab === link.id;
-            return (
-              <button
-                key={link.id}
-                onClick={() => setActiveTab(link.id as NavTab)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg shrink-0 transition-colors ${
-                  isActive
-                    ? 'bg-slate-900 text-white font-semibold'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{link.label}</span>
-              </button>
-            );
-          })}
+        {/* Mobile / Tablet Sub-Navigation Row */}
+        <div className="xl:hidden w-full max-w-full overflow-x-auto py-2 border-t border-slate-100 scrollbar-none touch-pan-x overscroll-x-contain">
+          <div className="flex items-center gap-1 min-w-max px-0.5">
+            {navLinks.map((link) => {
+              const Icon = link.icon;
+              const isActive = activeTab === link.id;
+              return (
+                <button
+                  key={link.id}
+                  onClick={() => setActiveTab(link.id as NavTab)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg shrink-0 transition-colors whitespace-nowrap ${
+                    isActive
+                      ? 'bg-slate-900 text-white font-semibold shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{link.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </header>

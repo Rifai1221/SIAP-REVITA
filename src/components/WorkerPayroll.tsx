@@ -10,6 +10,11 @@ import {
   DollarSign,
   Calendar,
   Layers,
+  Camera,
+  Image as ImageIcon,
+  FileCheck2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
 import {
@@ -19,6 +24,7 @@ import {
   WorkerHarian,
 } from '../types';
 import { formatRupiah, formatTanggalIndo } from '../utils/terbilang';
+import { WeeklyPhotoUploader } from './WeeklyPhotoUploader';
 
 type PayrollMode = 'HARIAN' | 'BORONGAN';
 
@@ -27,16 +33,21 @@ export const WorkerPayroll: React.FC = () => {
     projectInfo,
     payrollHarian,
     payrollBorongan,
+    progressPhotos,
     addPayrollHarianBatch,
     deletePayrollHarianBatch,
     addWorkerBorongan,
     payWorkerBorongan,
     deleteWorkerBorongan,
+    addProgressPhotos,
+    deleteProgressPhoto,
+    updateProgressPhotoCaption,
   } = useProject();
 
   const [activeMode, setActiveMode] = useState<PayrollMode>('HARIAN');
   const [showAddHarianModal, setShowAddHarianModal] = useState(false);
   const [showAddBoronganModal, setShowAddBoronganModal] = useState(false);
+  const [showPhotoUploaderInSpj, setShowPhotoUploaderInSpj] = useState(false);
   const [selectedBatchForPrint, setSelectedBatchForPrint] = useState<PayrollHarianBatch | null>(
     payrollHarian[0] || null
   );
@@ -364,22 +375,46 @@ export const WorkerPayroll: React.FC = () => {
           </div>
 
           {/* Detailed Printable SPJ Upah Sheet (8 cols) */}
-          <div className="lg:col-span-8">
+          <div className="lg:col-span-8 space-y-4">
             {selectedBatchForPrint ? (
-              <div className="bg-white border border-slate-300 rounded-xl p-6 sm:p-8 shadow-xs print:p-0 print:border-0">
-                <div className="no-print flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
-                  <span className="text-xs text-slate-500">
-                    Dokumen Tanda Terima Pembayaran Upah Tukang & Pekerja
-                  </span>
+              <div className="bg-white border border-slate-300 rounded-xl p-6 sm:p-8 shadow-xs print:p-0 print:border-0 space-y-6">
+                <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-700 block">
+                      Dokumen Tanda Terima Pembayaran Upah & Lampiran SPJ Mingguan
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {progressPhotos.filter((p) => p.mingguKe === selectedBatchForPrint.mingguKe).length} Foto Progres Terlampir pada SPJ ini
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
+                      onClick={() => setShowPhotoUploaderInSpj(!showPhotoUploaderInSpj)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors flex items-center gap-1.5 ${
+                        showPhotoUploaderInSpj
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Upload / Kelola Foto</span>
+                      {showPhotoUploaderInSpj ? (
+                        <ChevronUp className="w-3 h-3" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => window.print()}
                       className="px-3 py-1.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
                     >
                       <Printer className="w-4 h-4" />
-                      <span>Cetak SPJ Upah Ini</span>
+                      <span>Cetak SPJ Upah & Foto</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         if (window.confirm(`Hapus SPJ upah ${selectedBatchForPrint.noSpj}?`)) {
                           deletePayrollHarianBatch(selectedBatchForPrint.id);
@@ -394,12 +429,34 @@ export const WorkerPayroll: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Formal Printable Document */}
+                {/* Inline Photo Uploader for SPJ if toggled */}
+                {showPhotoUploaderInSpj && (
+                  <div className="no-print">
+                    <WeeklyPhotoUploader
+                      mingguKe={selectedBatchForPrint.mingguKe}
+                      photos={progressPhotos}
+                      onPhotosChange={(newPhotos) => {
+                        const otherWeekPhotos = progressPhotos.filter((p) => p.mingguKe !== selectedBatchForPrint.mingguKe);
+                        const updatedForThisWeek = newPhotos
+                          .filter((p) => p.mingguKe === selectedBatchForPrint.mingguKe || !p.mingguKe)
+                          .map((p) => ({
+                            ...p,
+                            mingguKe: selectedBatchForPrint.mingguKe,
+                          }));
+                        addProgressPhotos([...otherWeekPhotos, ...updatedForThisWeek]);
+                      }}
+                      title={`Lampiran Foto Dokumentasi Fisik SPJ Minggu Ke-${selectedBatchForPrint.mingguKe}`}
+                      subtitle="Upload foto-foto realisasi pekerjaan minggu ini. Foto otomatis ikut tercetak pada lembar lampiran SPJ Upah."
+                    />
+                  </div>
+                )}
+
+                {/* Formal Printable Document: Lembar 1 - Daftar Tanda Terima Upah */}
                 <div className="border border-slate-400 p-6 rounded-lg text-slate-900 space-y-4">
                   {/* Header */}
                   <div className="text-center border-b-2 border-slate-800 pb-3">
                     <h2 className="text-xs font-bold uppercase tracking-widest text-slate-600">
-                      {projectInfo.namaInstansi}
+                      {projectInfo.dataSekolah?.namaSekolah?.toUpperCase() || projectInfo.namaInstansi.toUpperCase()}
                     </h2>
                     <h1 className="text-base font-bold uppercase tracking-tight text-slate-900 mt-0.5">
                       DAFTAR TANDA TERIMA HONORARIUM TUKANG & PEKERJA
@@ -473,18 +530,22 @@ export const WorkerPayroll: React.FC = () => {
                   <div className="pt-8 grid grid-cols-3 gap-4 text-center text-[11px] text-slate-800">
                     <div>
                       <p>Mengetahui,</p>
-                      <p className="font-bold">Ketua TPK</p>
+                      <p className="font-bold">Ketua Tim P2SP</p>
                       <div className="h-16"></div>
-                      <p className="font-bold underline uppercase">{projectInfo.namaKetuaTPK}</p>
+                      <p className="font-bold underline uppercase">
+                        {projectInfo.timP2sp?.ketuaP2sp?.nama || projectInfo.namaKetuaTPK}
+                      </p>
                     </div>
                     <div>
                       <p>Telah Dibayar Lunas,</p>
-                      <p className="font-bold">Bendahara TPK</p>
+                      <p className="font-bold">Bendahara Tim P2SP</p>
                       <div className="h-16"></div>
-                      <p className="font-bold underline uppercase">{projectInfo.namaBendahara}</p>
+                      <p className="font-bold underline uppercase">
+                        {projectInfo.timP2sp?.bendahara?.nama || projectInfo.namaBendahara}
+                      </p>
                     </div>
                     <div>
-                      <p>{projectInfo.desa}, {formatTanggalIndo(selectedBatchForPrint.tanggalBayar)}</p>
+                      <p>{projectInfo.alamatLengkap?.desaKelurahan || projectInfo.desa}, {formatTanggalIndo(selectedBatchForPrint.tanggalBayar)}</p>
                       <p className="font-bold">Mandor / Koordinator Pekerja</p>
                       <div className="h-16"></div>
                       <p className="font-bold underline uppercase">
@@ -493,6 +554,82 @@ export const WorkerPayroll: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Formal Printable Document: Lembar 2 - Lampiran Dokumentasi Foto SPJ */}
+                {(() => {
+                  const spjPhotos = progressPhotos.filter(
+                    (p) => p.mingguKe === selectedBatchForPrint.mingguKe || (!p.mingguKe && progressPhotos.length <= 4)
+                  );
+                  return (
+                    <div className="border border-slate-400 p-6 rounded-lg text-slate-900 space-y-4 print:page-break-before">
+                      <div className="text-center border-b-2 border-slate-800 pb-3">
+                        <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-600">
+                          {projectInfo.dataSekolah?.namaSekolah?.toUpperCase() || projectInfo.namaInstansi.toUpperCase()}
+                        </h3>
+                        <h2 className="text-sm font-bold uppercase tracking-tight text-slate-900 mt-0.5">
+                          LAMPIRAN DOKUMENTASI FOTO FISIK PEKERJAAN (SPJ UPAH)
+                        </h2>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          No. Bukti SPJ: <strong className="font-mono">{selectedBatchForPrint.noSpj}</strong> · Minggu Ke-{selectedBatchForPrint.mingguKe} · Periode: {selectedBatchForPrint.periodeAwal} s/d {selectedBatchForPrint.periodeAkhir}
+                        </p>
+                      </div>
+
+                      {spjPhotos.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-4">
+                          {spjPhotos.map((photo, idx) => (
+                            <div key={photo.id} className="border border-slate-300 p-2.5 rounded bg-slate-50/50 space-y-2">
+                              <div className="aspect-4/3 overflow-hidden bg-slate-200 rounded border border-slate-200 flex items-center justify-center">
+                                <img
+                                  src={photo.url}
+                                  alt={photo.caption}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="text-xs border-t border-slate-200 pt-2">
+                                <p className="font-bold text-slate-900 text-[11px]">
+                                  Foto #{idx + 1}: <span className="font-normal text-slate-700">{photo.caption}</span>
+                                </p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">
+                                  Minggu Ke-{photo.mingguKe} · Tanggal Dokumentasi: {photo.tanggal || selectedBatchForPrint.tanggalBayar}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center text-slate-400 border border-dashed border-slate-300 rounded-lg">
+                          <Camera className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                          <p className="text-xs font-semibold text-slate-600">
+                            Belum ada foto progres mingguan untuk SPJ Minggu Ke-{selectedBatchForPrint.mingguKe}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Klik tombol &quot;Upload / Kelola Foto&quot; di atas untuk melampirkan foto fisik pekerjaan agar ikut tercetak.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Photo Verification Signatures */}
+                      <div className="pt-6 grid grid-cols-2 gap-6 text-center text-[11px] text-slate-800 border-t border-slate-200 mt-4">
+                        <div>
+                          <p>Diperiksa & Diverifikasi,</p>
+                          <p className="font-bold">Pengawas Teknis Lapangan</p>
+                          <div className="h-14"></div>
+                          <p className="font-bold underline uppercase">
+                            {projectInfo.timP2sp?.pengawas?.nama || 'Pengawas Lapangan'}
+                          </p>
+                        </div>
+                        <div>
+                          <p>Pelaksana Lapangan,</p>
+                          <p className="font-bold">Ketua Tim P2SP</p>
+                          <div className="h-14"></div>
+                          <p className="font-bold underline uppercase">
+                            {projectInfo.timP2sp?.ketuaP2sp?.nama || projectInfo.namaKetuaTPK}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 text-xs">

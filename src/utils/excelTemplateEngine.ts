@@ -1,101 +1,604 @@
 import * as XLSX from 'xlsx';
 import { RABMasterItem, WeeklyProgressInput } from '../types';
+import { getBerkas001StructuredData } from './berkas001RABTemplateData';
+import { BERKAS_002_AHSP_DATA, getBerkas002FlatBOMRows } from './berkas002AHSPTemplateData';
+import { generateOfficialWeeklyRecapTemplateExcel } from './weeklyRecapTemplateEngine';
+import { terbilangRupiah } from './terbilang';
 
 /**
  * Technical Document Excel Template Generators & Parsers
  * Client-side only using 'xlsx' (SheetJS) - 100% Free, zero billing, zero server calls.
  */
 
-// 1. Template RAB Induk (BOQ)
-export const generateRABTemplateExcel = () => {
-  const wsData = [
-    ['RENCANA ANGGARAN BIAYA (RAB) - FORMAT STANDAR PROYEK REVITALISASI'],
-    ['Petunjuk: Isi data uraian pekerjaan, kode analisa AHSP, volume, satuan, dan harga satuan.'],
-    [],
-    ['No', 'Kode Analisa', 'Divisi / Kelompok Pekerjaan', 'Uraian Item Pekerjaan', 'Volume', 'Satuan', 'Harga Satuan (Rp)'],
-    [1, 'A1', 'I. PEK. PERSIAPAN', 'Pek. Papan Nama Program + Papan Informasi', 1, 'ls', 800000],
-    [2, 'A3', 'I. PEK. PERSIAPAN', 'Pengadaan Air Kerja / listrik kerja', 1, 'ls', 500000],
-    [3, 'A4', 'I. PEK. PERSIAPAN', 'Penyediaan APD & Penerapan K3', 1, 'ls', 1316000],
-    [4, 'A5', 'I. PEK. PERSIAPAN', 'Pembongkaran Dinding Tembok Bata Merah', 150.71, 'm2', 7460],
-    [5, 'A10', 'I. PEK. PERSIAPAN', 'Pek. Pemasangan Bowplank', 36.96, 'm1', 40010],
-    [6, 'B1', 'II. PEK. TANAH', 'Pek. Galian Tanah Pondasi', 9.22, 'm3', 131250],
-    [7, 'B2', 'II. PEK. TANAH', 'Pek. Urugan Kembali bekas Galian', 4.61, 'm3', 52500],
-    [8, 'B3', 'II. PEK. TANAH', 'Pek. Urugan Pasir Bawah Pondasi', 0.29, 'm3', 292500],
-    [9, 'C5', 'IV. PEK. STRUKTUR', 'Pek. Beton Sloof Utama 1:2:3 (S1 20/30)', 1.06, 'm3', 1431950],
-    [10, 'D1', 'IV. PEK. STRUKTUR', 'Pasang bekisting untuk sloof + bongkar', 21.12, 'm2', 197300],
-    [11, 'C7', 'IV. PEK. STRUKTUR', 'Pembesian dengan besi polos atau ulir', 137.29, 'kg', 14660],
-    [12, 'E1', 'V. PEK. DINDING', 'Pas. Dinding Batubata 1:6', 22.81, 'm2', 157570],
-    [13, 'E7', 'V. PEK. DINDING', 'Pek. Plesteran Dinding 1 : 4', 149.19, 'm2', 74540],
-    [14, 'E9', 'V. PEK. DINDING', 'Pek. Acian Tembok PC 1 : 4', 149.19, 'm2', 36120],
-    [15, 'G30', 'VII. PEK. ATAP', 'Pek. Rangka Atap Baja Ringan (type Pelana)', 115.22, 'm2', 181500],
-    [16, 'G16', 'VII. PEK. ATAP', 'Pek. Penutup Atap Genteng Metal 0,4mm', 115.22, 'm2', 217610],
-    [17, 'H2', 'VIII. PEK. PLAFOND', 'Pek. Rangka hollow 40.40 modul 60x120', 186.18, 'm2', 89400],
-    [18, 'H5', 'VIII. PEK. PLAFOND', 'Pek. Pasang Plafon PVC', 186.18, 'm2', 236990],
-    [19, 'I5', 'IX. PEK. LANTAI', 'Pek. Lantai granit 60x60 cm', 111.57, 'm2', 301570],
-    [20, 'J1', 'X. PEK. CAT', 'Pek. Cat Dinding Interior berikut plamir', 442.56, 'm2', 45060],
-  ];
+export interface RABTemplateProjectInfo {
+  namaSekolah?: string;
+  npsn?: string;
+  desaKelurahan?: string;
+  kecamatan?: string;
+  kabupatenKota?: string;
+  provinsi?: string;
+  namaProyek?: string;
+  tahunAnggaran?: number | string;
+  namaKepalaSekolah?: string;
+  nipKepalaSekolah?: string;
+  ketuaPelaksana?: string;
+  totalPaguAnggaran?: number;
+  dataSekolah?: any;
+  alamatLengkap?: any;
+  timP2sp?: any;
+  namaInstansi?: string;
+  namaPimpinan?: string;
+  namaKetuaTPK?: string;
+  desa?: string;
+  kabupaten?: string;
+}
 
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  // Lebar kolom
-  ws['!cols'] = [
-    { wch: 6 },
-    { wch: 14 },
-    { wch: 24 },
-    { wch: 45 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 18 },
-  ];
+// 1. Template RAB Induk (BOQ) - Berkas 001 Standar Revitalisasi
+export const generateRABTemplateExcel = (
+  projectInfo?: RABTemplateProjectInfo | any,
+  currentRAB?: RABMasterItem[],
+  mode: 'standard_001' | 'current' | 'blank' = 'standard_001'
+) => {
+  const namaSekolah =
+    projectInfo?.dataSekolah?.namaSekolah ||
+    projectInfo?.namaSekolah ||
+    projectInfo?.namaInstansi ||
+    'SD/SMP NEGERI PELAKSANA REVITALISASI';
+  const npsn = projectInfo?.dataSekolah?.npsn || projectInfo?.npsn || '20260001';
+  const desa =
+    projectInfo?.alamatLengkap?.desaKelurahan ||
+    projectInfo?.desaKelurahan ||
+    projectInfo?.desa ||
+    'Babakan';
+  const kec = projectInfo?.alamatLengkap?.kecamatan || projectInfo?.kecamatan || 'Sukaraja';
+  const kab =
+    projectInfo?.alamatLengkap?.kabupatenKota ||
+    projectInfo?.kabupatenKota ||
+    projectInfo?.kabupaten ||
+    'Kabupaten Bogor';
+  const prov = projectInfo?.alamatLengkap?.provinsi || projectInfo?.provinsi || 'Jawa Barat';
+  const alamat = `${desa}, Kec. ${kec}, ${kab}, Prov. ${prov}`;
+  const namaProyek = projectInfo?.namaProyek || 'Rehabilitasi Ruang Kelas & Prasarana Pembelajaran Sekolah';
+  const tahunAnggaran = projectInfo?.tahunAnggaran || 2026;
+  const kepalaSekolah =
+    projectInfo?.timP2sp?.penanggungJawab?.nama ||
+    projectInfo?.namaKepalaSekolah ||
+    projectInfo?.namaPimpinan ||
+    'Drs. H. Ahmad Dahlan, M.Pd.';
+  const nipKepalaSekolah =
+    projectInfo?.timP2sp?.penanggungJawab?.nipNik ||
+    projectInfo?.nipKepalaSekolah ||
+    '19750812 200212 1 003';
+  const ketuaTPK =
+    projectInfo?.timP2sp?.ketuaP2sp?.nama ||
+    projectInfo?.ketuaPelaksana ||
+    projectInfo?.namaKetuaTPK ||
+    'Bambang Irawan, S.T.';
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'RAB_Induk');
-  XLSX.writeFile(wb, 'Template_RAB_Induk_Revitalisasi.xlsx');
-};
 
-// 2. Template Analisa Satuan Pekerjaan (AHSP SNI / Koefisien BOM)
-export const generateAHSPTemplateExcel = () => {
-  const wsData = [
-    ['DAFTAR ANALISA HARGA SATUAN PEKERJAAN (AHSP / SNI)'],
-    ['Petunjuk: Kolom Kategori diisi BAHAN atau UPAH. Koefisien menunjukkan konsumsi per 1 unit pekerjaan.'],
+  // Ambil dataset standar Berkas 001
+  const standardData = getBerkas001StructuredData();
+
+  // SHEET 1: 001_Formulir_RAB
+  const ws1Data: (string | number)[][] = [
+    ['KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET, DAN TEKNOLOGI'],
+    ['DIREKTORAT JENDERAL PENDIDIKAN ANAK USIA DINI, PENDIDIKAN DASAR, DAN PENDIDIKAN MENENGAH'],
+    ['PROGRAM BANTUAN REVITALISASI / REHABILITASI SATUAN PENDIDIKAN'],
+    ['FORMULIR 001 - RENCANA ANGGARAN BIAYA (RAB) / BILL OF QUANTITY (BOQ)'],
     [],
-    ['Kode Analisa', 'Uraian Pekerjaan Induk', 'Tipe (BAHAN/UPAH)', 'Uraian Komponen', 'Koefisien', 'Satuan Komponen', 'Harga Satuan Dasar (Rp)'],
-    ['E1', '1 M2 PASANGAN BATA MERAH 1:6', 'BAHAN', 'Bata Merah Bakar Kelas I', 71.91, 'bh', 1000],
-    ['E1', '1 M2 PASANGAN BATA MERAH 1:6', 'BAHAN', 'Semen PC 50kg', 8.32, 'kg', 1500],
-    ['E1', '1 M2 PASANGAN BATA MERAH 1:6', 'BAHAN', 'Pasir Pasang', 0.049, 'm3', 320000],
-    ['E1', '1 M2 PASANGAN BATA MERAH 1:6', 'UPAH', 'Pekerja', 0.20, 'OH', 175000],
-    ['E1', '1 M2 PASANGAN BATA MERAH 1:6', 'UPAH', 'Tukang Batu', 0.10, 'OH', 200000],
-    ['C5', '1 M3 BETON BERTULANG 1:2:3', 'BAHAN', 'Semen PC 50kg', 368.0, 'kg', 1500],
-    ['C5', '1 M3 BETON BERTULANG 1:2:3', 'BAHAN', 'Pasir Beton', 770.0, 'kg', 245.45],
-    ['C5', '1 M3 BETON BERTULANG 1:2:3', 'BAHAN', 'Batu Split / Kerikil 2/3 cm', 1009.0, 'kg', 337.17],
-    ['C5', '1 M3 BETON BERTULANG 1:2:3', 'UPAH', 'Pekerja', 1.65, 'OH', 175000],
-    ['C5', '1 M3 BETON BERTULANG 1:2:3', 'UPAH', 'Tukang Batu', 0.275, 'OH', 200000],
-    ['C7', '1 KG PEMBESIAN BESI BETON', 'BAHAN', 'Besi Beton Polos / Ulir', 1.05, 'kg', 10500],
-    ['C7', '1 KG PEMBESIAN BESI BETON', 'BAHAN', 'Kawat Beton (Bendrat)', 0.028, 'kg', 30000],
-    ['C7', '1 KG PEMBESIAN BESI BETON', 'UPAH', 'Tukang Besi', 0.007, 'OH', 200000],
-    ['E7', '1 M2 PLESTERAN DINDING 1:4 (25 mm)', 'BAHAN', 'Semen PC 50kg', 6.24, 'kg', 1500],
-    ['E7', '1 M2 PLESTERAN DINDING 1:4 (25 mm)', 'BAHAN', 'Pasir Pasang', 0.024, 'm3', 320000],
-    ['E9', '1 M2 ACIAN DINDING PC', 'BAHAN', 'Semen PC 50kg', 3.25, 'kg', 1500],
-    ['G30', '1 M2 RANGKA ATAP BAJA RINGAN', 'BAHAN', 'Baja Ringan Profil C75', 0.9603, 'btg', 138000],
-    ['H5', '1 M2 PASANG PLAFON PVC', 'BAHAN', 'Plafon PVC L=20cm', 5.0, 'm1', 23000],
-    ['H5', '1 M2 PASANG PLAFON PVC', 'BAHAN', 'Baut Screw 3/4', 11.0, 'bh', 1961.82],
-    ['I5', '1 M2 LANTAI GRANIT 60x60 CM', 'BAHAN', 'Granit 60x60 cm', 3.0, 'bh', 62500],
-    ['I5', '1 M2 LANTAI GRANIT 60x60 CM', 'BAHAN', 'Semen PC 50kg', 13.63, 'kg', 1500],
+    ['Nama Satuan Pendidikan', ':', namaSekolah, '', '', 'Tahun Anggaran', ':', String(tahunAnggaran), ''],
+    ['NPSN / Identitas', ':', npsn, '', '', 'Sumber Anggaran', ':', 'DAK Fisik / Bantuan Revitalisasi', ''],
+    ['Lokasi Proyek', ':', alamat, '', '', 'Nama Kegiatan', ':', namaProyek, ''],
+    [],
+    [
+      'NO',
+      'KODE ANALISA',
+      'DIVISI / KELOMPOK PEKERJAAN',
+      'URAIAN ITEM PEKERJAAN',
+      'VOLUME',
+      'SATUAN',
+      'HARGA SATUAN (Rp)',
+      'JUMLAH HARGA (Rp)',
+      'BOBOT (%)',
+    ],
   ];
 
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = [
+  let totalRAB = 0;
+
+  if (mode === 'current' && currentRAB && currentRAB.length > 0) {
+    // Mode export RAB saat ini
+    totalRAB = currentRAB.reduce((acc, curr) => acc + curr.biayaRAB, 0);
+    let runningCategory = '';
+    let itemCounter = 1;
+
+    currentRAB.forEach((it) => {
+      const cat = it.kategori || 'PEKERJAAN';
+      if (cat !== runningCategory) {
+        runningCategory = cat;
+        ws1Data.push(['', '', runningCategory, runningCategory, '', '', '', '', '']);
+      }
+      const hargaSatuan = it.volumeRAB > 0 ? Math.round(it.biayaRAB / it.volumeRAB) : it.biayaRAB;
+      const bobot = totalRAB > 0 ? Math.round((it.biayaRAB / totalRAB) * 10000) / 100 : it.bobotRencana;
+      ws1Data.push([
+        itemCounter++,
+        it.kode,
+        runningCategory,
+        it.namaPekerjaan,
+        it.volumeRAB,
+        it.satuan,
+        hargaSatuan,
+        it.biayaRAB,
+        bobot,
+      ]);
+    });
+  } else if (mode === 'blank') {
+    // Mode blanko kosong dengan struktur divisi
+    totalRAB = 0;
+    let itemCounter = 1;
+    standardData.divisions.forEach((div) => {
+      ws1Data.push(['', '', div.divisi, div.divisi, '', '', '', '', '']);
+      ws1Data.push([
+        itemCounter++,
+        `${div.romawi}.1`,
+        div.divisi,
+        `Item Contoh pada ${div.judul}`,
+        1,
+        'Ls',
+        0,
+        0,
+        0,
+      ]);
+    });
+  } else {
+    // Default: Mode Berkas 001 RAB Standar Lengkap (56 items, 12 divisi)
+    totalRAB = standardData.totalCost;
+    standardData.divisions.forEach((div) => {
+      // Header divisi
+      ws1Data.push(['', '', div.divisi, div.divisi, '', '', '', '', '']);
+
+      div.items.forEach((it) => {
+        ws1Data.push([
+          it.no,
+          it.kode,
+          div.divisi,
+          it.nama,
+          it.volume,
+          it.satuan,
+          it.hargaSatuan,
+          it.volume * it.hargaSatuan,
+          it.bobot,
+        ]);
+      });
+
+      // Subtotal per divisi
+      ws1Data.push([
+        '',
+        '',
+        '',
+        `SUBTOTAL ${div.divisi}`,
+        '',
+        '',
+        '',
+        div.subtotal,
+        div.bobotSubtotal,
+      ]);
+    });
+  }
+
+  // Footer Total & Terbilang
+  ws1Data.push([]);
+  ws1Data.push([
+    '',
+    '',
+    '',
+    'TOTAL RENCANA ANGGARAN BIAYA (RAB)',
+    '',
+    '',
+    '',
+    totalRAB,
+    100.0,
+  ]);
+  ws1Data.push(['Terbilang:', terbilangRupiah(totalRAB), '', '', '', '', '', '', '']);
+  ws1Data.push([]);
+
+  // Lembar Pengesahan
+  ws1Data.push([
+    '',
+    '',
+    'Mengetahui / Menyetujui:',
+    '',
+    '',
+    '',
+    '',
+    'Dibuat & Disusun Oleh:',
+    '',
+  ]);
+  ws1Data.push([
+    '',
+    '',
+    'Kepala Satuan Pendidikan',
+    '',
+    '',
+    '',
+    '',
+    'Tim Pelaksana Kegiatan (TPK)',
+    '',
+  ]);
+  ws1Data.push([
+    '',
+    '',
+    namaSekolah,
+    '',
+    '',
+    '',
+    '',
+    'Ketua Pelaksana / Tim Teknis',
+    '',
+  ]);
+  ws1Data.push([]);
+  ws1Data.push([]);
+  ws1Data.push([
+    '',
+    '',
+    `( ${kepalaSekolah} )`,
+    '',
+    '',
+    '',
+    '',
+    `( ${ketuaTPK} )`,
+    '',
+  ]);
+  ws1Data.push([
+    '',
+    '',
+    `NIP. ${nipKepalaSekolah}`,
+    '',
+    '',
+    '',
+    '',
+    'NIP/NIK. -',
+    '',
+  ]);
+
+  const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+  ws1['!cols'] = [
+    { wch: 6 }, // NO
+    { wch: 15 }, // KODE ANALISA
+    { wch: 32 }, // DIVISI
+    { wch: 50 }, // URAIAN ITEM PEKERJAAN
+    { wch: 12 }, // VOLUME
+    { wch: 10 }, // SATUAN
+    { wch: 18 }, // HARGA SATUAN
+    { wch: 22 }, // JUMLAH HARGA
+    { wch: 12 }, // BOBOT
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, '001_Formulir_RAB');
+
+  // SHEET 2: Rekapitulasi_RAB
+  const ws2Data: (string | number)[][] = [
+    ['REKAPITULASI RENCANA ANGGARAN BIAYA (RAB) - BERKAS 001'],
+    ['PROGRAM REVITALISASI / REHABILITASI SATUAN PENDIDIKAN'],
+    [],
+    ['Nama Satuan Pendidikan', ':', namaSekolah],
+    ['NPSN / Identitas', ':', npsn],
+    ['Kegiatan', ':', namaProyek],
+    ['Tahun Anggaran', ':', String(tahunAnggaran)],
+    [],
+    ['NO', 'DIVISI / URAIAN KELOMPOK PEKERJAAN', 'JUMLAH BIAYA (Rp)', 'BOBOT (%)'],
+  ];
+
+  standardData.divisions.forEach((div, idx) => {
+    ws2Data.push([idx + 1, div.divisi, div.subtotal, div.bobotSubtotal]);
+  });
+
+  ws2Data.push([]);
+  ws2Data.push(['', 'TOTAL KESELURUHAN BIAYA RAB', totalRAB, 100.0]);
+  ws2Data.push(['Terbilang:', terbilangRupiah(totalRAB), '', '']);
+  ws2Data.push([]);
+  ws2Data.push(['', 'Menyetujui,', '', 'Disusun Oleh,']);
+  ws2Data.push(['', 'Kepala Satuan Pendidikan', '', 'Ketua Tim Pelaksana (TPK)']);
+  ws2Data.push([]);
+  ws2Data.push([]);
+  ws2Data.push(['', `( ${kepalaSekolah} )`, '', `( ${ketuaTPK} )`]);
+  ws2Data.push(['', `NIP. ${nipKepalaSekolah}`, '', 'NIP/NIK. -']);
+
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2['!cols'] = [
+    { wch: 6 },
+    { wch: 42 },
+    { wch: 22 },
     { wch: 14 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Rekapitulasi_RAB');
+
+  // SHEET 3: Petunjuk_Pengisian
+  const ws3Data: (string | number)[][] = [
+    ['PETUNJUK PENGISIAN & PANDUAN IMPORT BERKAS 001 RAB'],
+    [],
+    ['1. Berkas ini adalah format resmi Dokumen 001 RAB Revitalisasi Satuan Pendidikan.'],
+    ['2. Anda dapat mengubah angka Volume dan Harga Satuan sesuai kondisi riil dan dokumen lelang/swakelola sekolah.'],
+    ['3. Pastikan kolom urutan (NO, KODE ANALISA, DIVISI, URAIAN, VOLUME, SATUAN, HARGA SATUAN) tidak diubah letaknya.'],
+    ['4. Baris Judul Divisi (contoh: I. PEKERJAAN PERSIAPAN) otomatis dideteksi sebagai kelompok pekerjaan di sistem.'],
+    ['5. Baris subtotal dan total akan dihitung dan disinkronkan kembali secara otomatis saat diunggah ke aplikasi.'],
+    ['6. Setelah selesai diedit, simpan file ini dan gunakan tombol "Upload Berkas RAB (.xlsx)" di menu Pusat Berkas Teknis.'],
+    ['7. Hasil upload akan langsung terintegrasi dengan Buku Kas Umum (BKU), modul Laporan Mingguan, dan Kwitansi Material.'],
+  ];
+  const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
+  ws3['!cols'] = [{ wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Petunjuk_Pengisian');
+
+  const cleanSchool = (namaSekolah || 'Revitalisasi').replace(/[^a-zA-Z0-9]/g, '_');
+  XLSX.writeFile(wb, `Template_Berkas_001_RAB_${cleanSchool}.xlsx`);
+};
+
+// 2. Template Analisa Satuan Pekerjaan (Berkas 002 AHSP / SNI Koefisien BOM)
+export const generateAHSPTemplateExcel = (projectInfo?: RABTemplateProjectInfo) => {
+  const wb = XLSX.utils.book_new();
+
+  const namaSekolah =
+    projectInfo?.namaSekolah ||
+    projectInfo?.dataSekolah?.namaSekolah ||
+    projectInfo?.namaInstansi ||
+    'SD/SMP NEGERI PELAKSANA REVITALISASI';
+  const npsn = projectInfo?.npsn || projectInfo?.dataSekolah?.npsn || '20260001';
+  const desa =
+    projectInfo?.desaKelurahan ||
+    projectInfo?.alamatLengkap?.desaKelurahan ||
+    projectInfo?.desa ||
+    'Babakan';
+  const kec =
+    projectInfo?.kecamatan ||
+    projectInfo?.alamatLengkap?.kecamatan ||
+    'Sukaraja';
+  const kab =
+    projectInfo?.kabupatenKota ||
+    projectInfo?.alamatLengkap?.kabupatenKota ||
+    projectInfo?.kabupaten ||
+    'Kabupaten Bogor';
+  const prov =
+    projectInfo?.provinsi ||
+    projectInfo?.alamatLengkap?.provinsi ||
+    'Jawa Barat';
+  const alamat = `${desa}, Kec. ${kec}, ${kab}, Prov. ${prov}`;
+  const namaProyek =
+    projectInfo?.namaProyek ||
+    'Rehabilitasi Ruang Kelas & Prasarana Pembelajaran Sekolah';
+  const tahunAnggaran = projectInfo?.tahunAnggaran || '2026';
+  const kepalaSekolah =
+    projectInfo?.namaKepalaSekolah ||
+    projectInfo?.timP2sp?.penanggungJawab?.nama ||
+    projectInfo?.namaPimpinan ||
+    'Drs. H. Ahmad Dahlan, M.Pd.';
+  const nipKepalaSekolah =
+    projectInfo?.nipKepalaSekolah ||
+    projectInfo?.timP2sp?.penanggungJawab?.nipNik ||
+    '19750812 200212 1 003';
+  const ketuaTPK =
+    projectInfo?.ketuaPelaksana ||
+    projectInfo?.timP2sp?.ketuaP2sp?.nama ||
+    projectInfo?.namaKetuaTPK ||
+    'Bambang Irawan, S.T.';
+
+  // SHEET 1: 002_Formulir_AHSP
+  const ws1Data: (string | number)[][] = [
+    ['KEMENTERIAN PENDIDIKAN DASAR DAN MENENGAH'],
+    ['DIREKTORAT JENDERAL PENDIDIKAN ANAK USIA DINI, PENDIDIKAN DASAR, DAN MENENGAH'],
+    ['PROGRAM REVITALISASI / BANTUAN FISIK SATUAN PENDIDIKAN'],
+    [],
+    ['BERKAS 002: ANALISA HARGA SATUAN PEKERJAAN (AHSP)'],
+    ['STANDAR NASIONAL INDONESIA (SNI) & PERMEN PUPR BIDANG CIPTA KARYA'],
+    [],
+    ['Nama Satuan Pendidikan', ':', namaSekolah],
+    ['NPSN / Identitas', ':', npsn],
+    ['Alamat Lokasi', ':', alamat],
+    ['Nama Kegiatan / Pekerjaan', ':', namaProyek],
+    ['Tahun Anggaran', ':', String(tahunAnggaran)],
+    [],
+  ];
+
+  BERKAS_002_AHSP_DATA.forEach((ahsp, idx) => {
+    ws1Data.push([
+      `ANALISA NO. ${idx + 1} (${ahsp.kode}): ${ahsp.namaPekerjaan.toUpperCase()}`,
+      '',
+      '',
+      '',
+      '',
+      `SATUAN: 1 ${ahsp.satuanPekerjaan}`,
+    ]);
+    ws1Data.push(['NO', 'URAIAN KOMPONEN', 'KODE / SATUAN', 'KOEFISIEN', 'HARGA DASAR (Rp)', 'JUMLAH HARGA (Rp)']);
+
+    // A. TENAGA KERJA
+    ws1Data.push(['A', 'TENAGA KERJA (UPAH)', '', '', '', '']);
+    const upahItems = ahsp.komponen.filter((k) => k.kategori === 'UPAH');
+    upahItems.forEach((u, uIdx) => {
+      ws1Data.push([
+        uIdx + 1,
+        u.uraian,
+        u.satuan,
+        u.koefisien,
+        u.hargaDasar,
+        u.jumlah,
+      ]);
+    });
+    ws1Data.push(['', 'JUMLAH TENAGA KERJA (A)', '', '', '', ahsp.totalUpah]);
+
+    // B. BAHAN
+    ws1Data.push(['B', 'BAHAN / MATERIAL', '', '', '', '']);
+    const bahanItems = ahsp.komponen.filter((k) => k.kategori === 'BAHAN');
+    bahanItems.forEach((b, bIdx) => {
+      ws1Data.push([
+        bIdx + 1,
+        b.uraian,
+        b.satuan,
+        b.koefisien,
+        b.hargaDasar,
+        b.jumlah,
+      ]);
+    });
+    ws1Data.push(['', 'JUMLAH BAHAN / MATERIAL (B)', '', '', '', ahsp.totalBahan]);
+
+    // C. PERALATAN
+    ws1Data.push(['C', 'PERALATAN (ALAT BANTU)', '', '', '', '']);
+    const alatItems = ahsp.komponen.filter((k) => k.kategori === 'ALAT');
+    if (alatItems.length > 0) {
+      alatItems.forEach((al, aIdx) => {
+        ws1Data.push([aIdx + 1, al.uraian, al.satuan, al.koefisien, al.hargaDasar, al.jumlah]);
+      });
+      ws1Data.push(['', 'JUMLAH PERALATAN (C)', '', '', '', ahsp.totalAlat]);
+    } else {
+      ws1Data.push(['-', 'Tidak menggunakan alat berat / alat bantu sewa', 'Ls', 0, 0, 0]);
+      ws1Data.push(['', 'JUMLAH PERALATAN (C)', '', '', '', 0]);
+    }
+
+    // D. JUMLAH TOTAL HARGA SATUAN
+    ws1Data.push(['D', `JUMLAH HARGA SATUAN PEKERJAAN (A + B + C) per 1 ${ahsp.satuanPekerjaan}`, '', '', '', ahsp.hargaSatuan]);
+    ws1Data.push([]);
+  });
+
+  // Lembar Pengesahan
+  ws1Data.push([
+    '',
+    '',
+    'Mengetahui / Menyetujui:',
+    '',
+    'Dibuat & Disusun Oleh:',
+    '',
+  ]);
+  ws1Data.push([
+    '',
+    '',
+    'Kepala Satuan Pendidikan',
+    '',
+    'Tim Pelaksana Kegiatan (TPK)',
+    '',
+  ]);
+  ws1Data.push([
+    '',
+    '',
+    namaSekolah,
+    '',
+    'Ketua Pelaksana / Tim Teknis',
+    '',
+  ]);
+  ws1Data.push([]);
+  ws1Data.push([]);
+  ws1Data.push([
+    '',
+    '',
+    `( ${kepalaSekolah} )`,
+    '',
+    `( ${ketuaTPK} )`,
+    '',
+  ]);
+  ws1Data.push([
+    '',
+    '',
+    `NIP. ${nipKepalaSekolah}`,
+    '',
+    'NIP/NIK. -',
+    '',
+  ]);
+
+  const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+  ws1['!cols'] = [
+    { wch: 8 },  // NO
+    { wch: 45 }, // URAIAN
+    { wch: 15 }, // KODE/SATUAN
+    { wch: 14 }, // KOEFISIEN
+    { wch: 20 }, // HARGA DASAR
+    { wch: 22 }, // JUMLAH
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, '002_Formulir_AHSP');
+
+  // SHEET 2: Tabel_Koefisien_BOM (Format Flat Siap Import Aplikasi)
+  const flatRows = getBerkas002FlatBOMRows();
+  const ws2Data: (string | number)[][] = [
+    ['TABEL KOEFISIEN ANALISA HARGA SATUAN (AHSP) - BERKAS 002'],
+    ['Format ini kompatibel untuk diimpor kembali ke Master RAB Proyek via tombol "Upload AHSP"'],
+    [],
+    ['Kode Analisa', 'Uraian Pekerjaan Induk', 'Tipe (BAHAN/UPAH)', 'Uraian Komponen', 'Koefisien', 'Satuan Komponen', 'Harga Satuan Dasar (Rp)', 'Total (Rp)'],
+  ];
+
+  flatRows.forEach((r) => {
+    ws2Data.push([
+      r.kodeAnalisa,
+      r.namaPekerjaan,
+      r.tipe,
+      r.uraianKomponen,
+      r.koefisien,
+      r.satuan,
+      r.hargaDasar,
+      r.jumlah,
+    ]);
+  });
+
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2['!cols'] = [
+    { wch: 14 },
+    { wch: 40 },
+    { wch: 18 },
     { wch: 35 },
-    { wch: 16 },
-    { wch: 30 },
     { wch: 12 },
     { wch: 16 },
     { wch: 22 },
+    { wch: 18 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Tabel_Koefisien_BOM');
+
+  // SHEET 3: Rekap_Harga_Satuan_AHSP
+  const ws3Data: (string | number)[][] = [
+    ['REKAPITULASI ANALISA HARGA SATUAN PEKERJAAN (AHSP) - BERKAS 002'],
+    ['Satuan Pendidikan:', namaSekolah, 'NPSN:', npsn, 'Tahun Anggaran:', String(tahunAnggaran)],
+    [],
+    ['NO', 'KODE', 'DIVISI', 'URAIAN ITEM PEKERJAAN', 'SATUAN', 'UPAH (Rp)', 'BAHAN (Rp)', 'ALAT (Rp)', 'HARGA SATUAN (Rp)'],
   ];
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'AHSP_Koefisien');
-  XLSX.writeFile(wb, 'Template_AHSP_Koefisien_Material.xlsx');
+  BERKAS_002_AHSP_DATA.forEach((item, i) => {
+    ws3Data.push([
+      i + 1,
+      item.kode,
+      item.divisi,
+      item.namaPekerjaan,
+      item.satuanPekerjaan,
+      item.totalUpah,
+      item.totalBahan,
+      item.totalAlat,
+      item.hargaSatuan,
+    ]);
+  });
+
+  const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
+  ws3['!cols'] = [
+    { wch: 6 },
+    { wch: 10 },
+    { wch: 30 },
+    { wch: 45 },
+    { wch: 10 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 22 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Rekap_Harga_Satuan_AHSP');
+
+  // SHEET 4: Petunjuk_Pengisian
+  const ws4Data: (string | number)[][] = [
+    ['PETUNJUK PENGISIAN & PENGGUNAAN DOKUMEN BERKAS 002 AHSP'],
+    [],
+    ['1. Berkas ini merupakan Dokumen 002: Analisa Harga Satuan Pekerjaan (AHSP) Resmi Bantuan Revitalisasi.'],
+    ['2. Standar koefisien mengacu pada SNI / Permen PUPR Cipta Karya terbaru untuk pekerjaan bangunan sekolah.'],
+    ['3. Sheet "002_Formulir_AHSP" memuat rincian fisik A. Tenaga Kerja, B. Bahan, C. Alat dan Lembar Pengesahan.'],
+    ['4. Sheet "Tabel_Koefisien_BOM" memuat tabel flat data yang dapat Anda sesuaikan koefisien atau harga dasarnya.'],
+    ['5. Sheet "Rekap_Harga_Satuan_AHSP" menyajikan rangkuman harga satuan yang terkoneksi langsung dengan Berkas 001 RAB.'],
+    ['6. Setelah selesai diedit, simpan file ini dan gunakan tombol "Upload AHSP" untuk menyinkronkan komponen material ke proyek aktif.'],
+  ];
+  const ws4 = XLSX.utils.aoa_to_sheet(ws4Data);
+  ws4['!cols'] = [{ wch: 85 }];
+  XLSX.utils.book_append_sheet(wb, ws4, 'Petunjuk_Pengisian');
+
+  const cleanSchool = (namaSekolah || 'Revitalisasi').replace(/[^a-zA-Z0-9]/g, '_');
+  XLSX.writeFile(wb, `Template_Berkas_002_AHSP_${cleanSchool}.xlsx`);
 };
 
 // 3. Template Standar Harga Upah & Bahan
@@ -149,61 +652,36 @@ export const generateHargaBahanUpahTemplateExcel = () => {
 };
 
 // 4. Template Laporan Mingguan & Progres Fisik (Sesuai Form Rekapitulasi & Mingguan yang Dilampirkan)
-export const generateLaporanMingguanTemplateExcel = (currentRAB: RABMasterItem[]) => {
-  const wsData: (string | number)[][] = [
-    ['LAPORAN MINGGUAN & PRESTASI PROGRES FISIK PEKERJAAN'],
-    ['Petunjuk: Isi hanya kolom "Volume Minggu Ini" atau "Bobot Minggu Ini (%)". Sistem akan menghitung otomatis kumulatifnya.'],
-    ['Minggu Ke: 4', 'Periode: 27 Juli 2026 s/d 02 Agustus 2026'],
-    [],
-    [
-      'Kode',
-      'Divisi',
-      'Uraian Pekerjaan',
-      'Volume RAB',
-      'Satuan',
-      'Harga Satuan (Rp)',
-      'Total Biaya RAB (Rp)',
-      'Bobot RAB (%)',
-      'Progres Minggu Lalu (%)',
-      'Volume Minggu Ini',
-      'Bobot Minggu Ini (%)',
-    ],
-  ];
-
-  currentRAB.forEach((item) => {
-    wsData.push([
-      item.kode,
-      item.kategori || 'PEKERJAAN',
-      item.namaPekerjaan,
-      item.volumeRAB,
-      item.satuan,
-      Math.round(item.biayaRAB / (item.volumeRAB || 1)),
-      item.biayaRAB,
-      item.bobotRencana,
-      item.progresRealisasi,
-      0, // default volume minggu ini
-      0, // default bobot minggu ini
-    ]);
-  });
-
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = [
-    { wch: 10 },
-    { wch: 18 },
-    { wch: 42 },
-    { wch: 12 },
-    { wch: 8 },
-    { wch: 18 },
-    { wch: 20 },
-    { wch: 14 },
-    { wch: 22 },
-    { wch: 18 },
-    { wch: 20 },
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Laporan_Mingguan');
-  XLSX.writeFile(wb, 'Template_Laporan_Progres_Mingguan.xlsx');
+export const generateLaporanMingguanTemplateExcel = (
+  currentRAB: RABMasterItem[],
+  projectInfo?: any
+) => {
+  generateOfficialWeeklyRecapTemplateExcel(
+    {
+      namaSekolah:
+        projectInfo?.dataSekolah?.namaSekolah ||
+        projectInfo?.namaSekolah ||
+        projectInfo?.namaInstansi ||
+        'TK NURIADEEN CENDEKIA',
+      namaProyek: projectInfo?.namaProyek || 'RUANG KELAS BARU',
+      kabupatenKota:
+        projectInfo?.alamatLengkap?.kabupatenKota ||
+        projectInfo?.kabupatenKota ||
+        projectInfo?.kabupaten ||
+        'KAB/KOTA BOGOR',
+      provinsi:
+        projectInfo?.alamatLengkap?.provinsi ||
+        projectInfo?.provinsi ||
+        'PROPINSI JAWA BARAT',
+      tanggalSurat: 'Bogor, 02 Agustus 2026',
+      namaKetuaP2SP:
+        projectInfo?.timP2sp?.ketuaP2sp?.nama ||
+        projectInfo?.namaKetuaTPK ||
+        'SURYADI, S.Pd.I.',
+      namaPengawas: 'ERWIN RUSANDI, S.T.',
+    },
+    currentRAB
+  );
 };
 
 // Parser File Excel / CSV Client-Side
@@ -293,8 +771,19 @@ export const parseRABFile = async (
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
+
+        // Prioritaskan sheet bernama '001_Formulir_RAB' atau sheet pertama
+        let targetSheetName = workbook.SheetNames[0];
+        const rabSheet = workbook.SheetNames.find((s: string) =>
+          s.toLowerCase().includes('001') ||
+          s.toLowerCase().includes('rab') ||
+          s.toLowerCase().includes('boq')
+        );
+        if (rabSheet) {
+          targetSheetName = rabSheet;
+        }
+
+        const worksheet = workbook.Sheets[targetSheetName];
         const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         let headerRowIndex = -1;
@@ -307,7 +796,7 @@ export const parseRABFile = async (
                 typeof cell === 'string' &&
                 (cell.toLowerCase().includes('uraian') ||
                   cell.toLowerCase().includes('pekerjaan') ||
-                  cell.toLowerCase().includes('kode'))
+                  cell.toLowerCase().includes('kode analisa'))
             )
           ) {
             headerRowIndex = i;
@@ -316,11 +805,11 @@ export const parseRABFile = async (
         }
 
         if (headerRowIndex === -1) {
-          headerRowIndex = 3;
+          headerRowIndex = 9; // Fallback jika format 001
         }
 
         const items: RABMasterItem[] = [];
-        let runningCategory = 'PEKERJAAN';
+        let runningCategory = 'I. PEKERJAAN PERSIAPAN';
 
         for (let i = headerRowIndex + 1; i < json.length; i++) {
           const row = json[i];
@@ -331,22 +820,58 @@ export const parseRABFile = async (
           const col2 = String(row[2] || '').trim();
           const col3 = String(row[3] || '').trim();
 
-          // Deteksi judul bab/divisi jika hanya ada uraian tanpa volume (contoh: "I. PEK. PERSIAPAN")
-          if ((col0.match(/^[I|V|X]+\./i) || col1.match(/^[I|V|X]+\./i)) && (!row[4] || isNaN(parseFloat(row[4])))) {
-            runningCategory = col2 || col1 || col0;
+          const combinedText = `${col0} ${col1} ${col2} ${col3}`.toLowerCase();
+
+          // Deteksi judul bab/divisi jika ada nomor romawi (contoh: "I. PEKERJAAN PERSIAPAN")
+          if (
+            (col2.match(/^[I|V|X]+\./i) || col3.match(/^[I|V|X]+\./i) || col0.match(/^[I|V|X]+\./i)) &&
+            (!row[4] || isNaN(parseFloat(String(row[4]).replace(/,/g, '.'))))
+          ) {
+            runningCategory = col2 || col3 || col1 || col0;
             continue;
           }
 
-          const kode = col1 || (col0.length <= 6 ? col0 : `WBS-${i}`);
-          const divisi = col2 && isNaN(parseFloat(col2)) && col2.length > 3 ? col2 : runningCategory;
+          // Abaikan baris subtotal, total, terbilang, dan tanda tangan
+          if (
+            combinedText.includes('total') ||
+            combinedText.includes('jumlah') ||
+            combinedText.includes('subtotal') ||
+            combinedText.includes('terbilang') ||
+            combinedText.includes('mengetahui') ||
+            combinedText.includes('dibuat') ||
+            combinedText.includes('kepala satuan') ||
+            combinedText.includes('kepala sekolah') ||
+            combinedText.includes('tim pelaksana') ||
+            combinedText.includes('pelaksana kegiatan') ||
+            combinedText.includes('nip.') ||
+            combinedText.includes('petunjuk') ||
+            combinedText.includes('catatan')
+          ) {
+            continue;
+          }
+
+          // Kode analisa & divisi
+          const kode = col1 || (col0.length <= 8 && !isNaN(parseInt(col0)) ? `A.${col0}` : `WBS-${i}`);
+          const divisi = col2 && col2.length > 3 && isNaN(parseFloat(col2)) ? col2 : runningCategory;
           const nama = col3 || col2 || col1;
-          if (!nama || nama.toLowerCase().includes('total') || nama.toLowerCase().includes('jumlah')) continue;
+
+          if (!nama || nama.length < 2) continue;
 
           // Parsing volume, satuan, harga
-          const volume = parseFloat(row[4]) || parseFloat(row[3]) || 1;
-          const satuan = String(row[5] || row[4] || 'ls').trim();
-          const hargaSatuan = parseFloat(row[6]) || parseFloat(row[5]) || 0;
-          const biayaRAB = hargaSatuan > 0 ? Math.round(volume * hargaSatuan) : parseFloat(row[7]) || 1000000;
+          const rawVol = String(row[4] || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+          const volume = parseFloat(rawVol) || 1;
+
+          const satuan = String(row[5] || 'Ls').trim();
+
+          const rawHarga = String(row[6] || '').replace(/[^0-9.-]/g, '');
+          const hargaSatuan = parseFloat(rawHarga) || 0;
+
+          const rawBiaya = String(row[7] || '').replace(/[^0-9.-]/g, '');
+          const biayaCol = parseFloat(rawBiaya) || 0;
+
+          const biayaRAB = biayaCol > 0 ? biayaCol : hargaSatuan > 0 ? Math.round(volume * hargaSatuan) : 1000000;
+
+          if (volume <= 0 && hargaSatuan <= 0 && biayaCol <= 0) continue;
 
           items.push({
             id: `wbs-up-${Date.now()}-${i}`,
@@ -407,8 +932,14 @@ export const parseAHSPFile = async (
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
+        const targetSheetName =
+          workbook.SheetNames.find(
+            (s) =>
+              s.toLowerCase().includes('tabel_koefisien') ||
+              s.toLowerCase().includes('koefisien') ||
+              s.toLowerCase().includes('ahsp')
+          ) || workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[targetSheetName];
         const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         let headerRowIndex = -1;

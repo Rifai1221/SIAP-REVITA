@@ -26,6 +26,9 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
     projectInfo,
     updateProjectInfo,
     resetToDefaultData,
+    resetToCleanData,
+    loadDemoSimulationData,
+    cloudSyncStatus,
     exportProjectFile,
     transactions,
     kwitansiList,
@@ -287,7 +290,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => exportProjectFile('revita')}
@@ -307,15 +310,37 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm('Kembalikan data sekolah ini ke contoh awal default?')) {
-                    resetToDefaultData();
+                  if (
+                    window.confirm(
+                      'Kosongkan semua data transaksi, kwitansi, dan payroll untuk sekolah ini? Data keuangan akan dibersihkan mulai dari nol (Rp 0).'
+                    )
+                  ) {
+                    resetToCleanData();
                     onClose();
                   }
                 }}
                 className="px-3 py-1.5 text-xs font-medium border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg flex items-center gap-1"
+                title="Hapus semua transaksi dan mulai dari Rp 0 bersih"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Demo</span>
+                <span>Kosongkan Transaksi (Nol)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Muat data simulasi contoh (13 transaksi, 5 kwitansi, payroll)? Gunakan ini HANYA jika ingin mencoba simulasi aplikasi.'
+                    )
+                  ) {
+                    loadDemoSimulationData();
+                    onClose();
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-medium border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg flex items-center gap-1"
+                title="Muat data contoh transaksi hanya untuk simulasi uji coba"
+              >
+                <span>🧪 Muat Contoh Simulasi</span>
               </button>
             </div>
           </div>

@@ -230,7 +230,7 @@ export const MasterDataManager: React.FC<MasterDataManagerProps> = () => {
                   })
                 }
                 className="w-full p-2.5 border border-slate-300 rounded-lg bg-white font-medium text-slate-900 focus:ring-1 focus:ring-emerald-600 outline-none"
-                placeholder="Contoh: SD Negeri 01 Babakan"
+                placeholder="Contoh: SD Negeri 01 Cibinong"
               />
             </div>
 
@@ -241,15 +241,15 @@ export const MasterDataManager: React.FC<MasterDataManagerProps> = () => {
               <input
                 type="text"
                 required
-                value={formData.dataSekolah.npsn}
+                value={formData.dataSekolah.npsn === '20260001' ? '' : formData.dataSekolah.npsn}
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    dataSekolah: { ...formData.dataSekolah, npsn: e.target.value },
+                    dataSekolah: { ...formData.dataSekolah, npsn: e.target.value.replace(/[^0-9]/g, '') },
                   })
                 }
                 className="w-full p-2.5 border border-slate-300 rounded-lg bg-white font-mono font-bold text-slate-900 focus:ring-1 focus:ring-emerald-600 outline-none"
-                placeholder="Contoh: 20201842"
+                placeholder="Contoh: 20215566"
               />
             </div>
 

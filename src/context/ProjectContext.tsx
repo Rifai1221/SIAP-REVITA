@@ -15,21 +15,38 @@ import {
   WBSItem,
   WeeklyRecap,
   WorkerBoronganItem,
+  ProgressPhotoItem,
 } from '../types';
+import { createDemoProgressPhotos } from '../utils/photoStorageEngine';
 import {
   INITIAL_BORONGAN_LIST,
   INITIAL_DAILY_LOGS,
   INITIAL_KWITANSI_LIST,
   INITIAL_PAYROLL_HARIAN,
   INITIAL_PROJECT_INFO,
+  CLEAN_PROJECT_INFO,
+  CLEAN_WBS,
   INITIAL_STANDARD_MATERIALS,
   INITIAL_STANDARD_WAGES,
   INITIAL_TRANSACTIONS,
   INITIAL_WBS,
   INITIAL_WEEKLY_RECAPS,
+  isPublishedApp,
 } from '../utils/initialData';
+import {
+  syncWorkspaceMetaToCloud,
+  syncSchoolDataToCloud,
+  fetchWorkspacesFromCloud,
+  fetchSchoolDataFromCloud,
+  deleteSchoolFromCloud,
+  isDemoSchoolData,
+  isDemoTransactions,
+  hasRealUserTransactions,
+  CloudSyncStatus,
+} from '../utils/firestoreSync';
 import { INITIAL_RAB_MASTER } from '../utils/rabMasterData';
 import { terbilangRupiah } from '../utils/terbilang';
+import { WeeklyWagesCalculationResult } from '../utils/weeklyWagesEngine';
 
 interface FinancialSummary {
   penerimaanBKU: number;
@@ -76,6 +93,7 @@ interface ProjectContextType {
   weeklyRecaps: WeeklyRecap[];
   standardWages: StandardWageRate[];
   standardMaterials: StandardMaterialPrice[];
+  progressPhotos: ProgressPhotoItem[];
   summary: FinancialSummary;
 
   // Multi-Workspace State & Actions
@@ -104,7 +122,17 @@ interface ProjectContextType {
   transferKasBankKeTunai: (tanggal: string, nominal: number, noCek: string, uraian?: string) => void;
   addKwitansi: (kwitansi: Omit<Kwitansi, 'id'>) => void;
   addBatchKwitansi: (plans: GeneratedDailyPurchasePlan[], updateProgress?: boolean, mingguKe?: number) => void;
+  addBatchKwitansiAndWeeklyWages: (
+    plans: GeneratedDailyPurchasePlan[],
+    wages: WeeklyWagesCalculationResult,
+    mingguKe: number,
+    updatedRAB?: RABMasterItem[],
+    photos?: ProgressPhotoItem[]
+  ) => void;
   deleteKwitansi: (id: string) => void;
+  addProgressPhotos: (photos: ProgressPhotoItem[]) => void;
+  deleteProgressPhoto: (id: string) => void;
+  updateProgressPhotoCaption: (id: string, caption: string) => void;
   addPayrollHarianBatch: (batch: Omit<PayrollHarianBatch, 'id'>) => void;
   deletePayrollHarianBatch: (id: string) => void;
   addWorkerBorongan: (item: Omit<WorkerBoronganItem, 'id'>) => void;
@@ -116,11 +144,16 @@ interface ProjectContextType {
   updateRABMaster: (newList: RABMasterItem[]) => void;
   addStandardWage: (wage: Omit<StandardWageRate, 'id'>) => void;
   updateStandardWage: (id: string, wage: Partial<StandardWageRate>) => void;
+  updateStandardWages: (wages: StandardWageRate[]) => void;
   deleteStandardWage: (id: string) => void;
   addStandardMaterial: (material: Omit<StandardMaterialPrice, 'id'>) => void;
   updateStandardMaterial: (id: string, material: Partial<StandardMaterialPrice>) => void;
+  updateStandardMaterials: (materials: StandardMaterialPrice[]) => void;
   deleteStandardMaterial: (id: string) => void;
   resetToDefaultData: () => void;
+  resetToCleanData: () => void;
+  loadDemoSimulationData: () => void;
+  cloudSyncStatus: CloudSyncStatus;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -136,7 +169,35 @@ const getSchoolStorageKey = (npsn: string, keyName: string) => {
   return `sekolah_${npsn}_${keyName}`;
 };
 
-// Default Workspace Profiles
+// Clean Default Workspace Profile for production / live apps
+const CLEAN_INITIAL_WORKSPACE: SchoolWorkspaceProfile = {
+  npsn: '20260001',
+  namaSekolah: 'Sekolah Pelaksana Revitalisasi',
+  jenjang: 'SD',
+  kabupatenKota: 'Kabupaten Bogor',
+  pin: '',
+  isPinProtected: false,
+  createdAt: new Date().toISOString(),
+  lastActive: new Date().toISOString(),
+  paguAnggaran: 0,
+  warnaTema: 'emerald',
+  catatanFasilitator: 'Program Revitalisasi Sarpras Sekolah P2SP',
+};
+
+// Check if a school saved locally contains real custom user transactions
+const checkSchoolHasRealTransactions = (npsn: string): boolean => {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  try {
+    const raw = localStorage.getItem(getSchoolStorageKey(npsn, 'bku'));
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && hasRealUserTransactions(parsed);
+  } catch {
+    return false;
+  }
+};
+
+// Default Workspace Profiles for local simulation
 const DEFAULT_INITIAL_WORKSPACES: SchoolWorkspaceProfile[] = [
   {
     npsn: '20201842',
@@ -165,6 +226,103 @@ const DEFAULT_INITIAL_WORKSPACES: SchoolWorkspaceProfile[] = [
     catatanFasilitator: 'Rehabilitasi Ruang Laboratorium IPA & Toilet Siswa',
   },
 ];
+
+// Helper to safely resolve initial workspaces without overwriting existing data
+const resolveInitialWorkspacesState = (): { workspaces: SchoolWorkspaceProfile[]; activeNpsn: string } => {
+  let list: SchoolWorkspaceProfile[] = [];
+
+  // 1. Check current list in localStorage
+  const saved = localStorage.getItem(GLOBAL_STORAGE_KEYS.WORKSPACES_LIST);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        list = parsed;
+      }
+    } catch (e) {
+      console.error('Failed to parse workspaces list', e);
+    }
+  }
+
+  // 2. Also check legacy registry key
+  if (list.length === 0) {
+    const registry = localStorage.getItem('siap_revita_workspaces_registry_v2');
+    if (registry) {
+      try {
+        const parsed = JSON.parse(registry);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed.map((item: any) => ({
+            npsn: item.npsn,
+            namaSekolah: item.namaSekolah,
+            jenjang: item.jenjang || 'SD',
+            kabupatenKota: item.kabupaten || 'Kabupaten Bogor',
+            pin: item.pin || '',
+            isPinProtected: !!item.hasPin,
+            createdAt: item.createdAt || new Date().toISOString(),
+            lastActive: item.lastModified || new Date().toISOString(),
+            paguAnggaran: item.paguAnggaran || 0,
+            warnaTema: 'emerald',
+          }));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+
+  // 3. Scan localStorage for any school projects previously filled to ensure zero data loss
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('sekolah_') && key.endsWith('_project')) {
+          const matchedNpsn = key.replace('sekolah_', '').replace('_project', '');
+          if (matchedNpsn && !list.some((w) => w.npsn === matchedNpsn)) {
+            try {
+              const raw = localStorage.getItem(key);
+              if (raw) {
+                const p = JSON.parse(raw);
+                list.push({
+                  npsn: matchedNpsn,
+                  namaSekolah: p.dataSekolah?.namaSekolah || p.namaInstansi || `Sekolah ${matchedNpsn}`,
+                  jenjang: p.dataSekolah?.jenjang || 'SD',
+                  kabupatenKota: p.alamatLengkap?.kabupatenKota || p.kabupaten || 'Kabupaten Bogor',
+                  isPinProtected: false,
+                  createdAt: new Date().toISOString(),
+                  lastActive: new Date().toISOString(),
+                  paguAnggaran: p.totalPaguAnggaran || 0,
+                  warnaTema: 'emerald',
+                });
+              }
+            } catch (err) {}
+          }
+        }
+      }
+    } catch (err) {}
+  }
+
+  const isPublished = isPublishedApp();
+
+  // If in published mode, NEVER force fake demo schools if real user data exists
+  if (isPublished) {
+    const userSchools = list.filter((w) => !isDemoSchoolData(w.npsn, w.namaSekolah, checkSchoolHasRealTransactions(w.npsn)));
+    if (userSchools.length > 0) {
+      list = userSchools;
+    } else {
+      list = [CLEAN_INITIAL_WORKSPACE];
+    }
+  } else if (list.length === 0) {
+    list = DEFAULT_INITIAL_WORKSPACES;
+  }
+
+  const savedActive = localStorage.getItem(GLOBAL_STORAGE_KEYS.ACTIVE_NPSN);
+  const active =
+    savedActive && list.some((w) => w.npsn === savedActive)
+      ? savedActive
+      : list[0]?.npsn || '20260001';
+
+  return { workspaces: list, activeNpsn: active };
+};
 
 // Helper to create sample secondary school data
 const createSampleSecondarySchool = (): {
@@ -304,30 +462,16 @@ const createSampleSecondarySchool = (): {
 };
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Initialize Workspaces List
-  const [workspaces, setWorkspaces] = useState<SchoolWorkspaceProfile[]>(() => {
-    const saved = localStorage.getItem(GLOBAL_STORAGE_KEYS.WORKSPACES_LIST);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {
-        console.error('Failed to parse workspaces list', e);
-      }
-    }
-    return DEFAULT_INITIAL_WORKSPACES;
-  });
+  // 1. Initialize Workspaces List & Active NPSN with clean & persistent fallback
+  const initialResolved = useMemo(() => resolveInitialWorkspacesState(), []);
 
-  // 2. Initialize Active NPSN
-  const [activeNpsn, setActiveNpsn] = useState<string>(() => {
-    const saved = localStorage.getItem(GLOBAL_STORAGE_KEYS.ACTIVE_NPSN);
-    if (saved && saved.trim().length > 0) return saved;
-    return '20201842';
-  });
+  const [workspaces, setWorkspaces] = useState<SchoolWorkspaceProfile[]>(initialResolved.workspaces);
+  const [activeNpsn, setActiveNpsn] = useState<string>(initialResolved.activeNpsn);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>('ONLINE_SYNCED');
 
-  // 3. Helper to load school data by NPSN
+  // 2. Helper to safely load school data by NPSN without demo pollution
   const loadSchoolDataset = (npsn: string) => {
-    // Migration check: If old un-prefixed keys exist and active NPSN is 20201842, check if we need to migrate
+    // Migration check: If old un-prefixed keys exist and active NPSN is 20201842, migrate once
     const legacyProject = localStorage.getItem('siap_revita_project_v1');
     const existingNpsnProject = localStorage.getItem(getSchoolStorageKey(npsn, 'project'));
 
@@ -364,88 +508,128 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
 
-    // Load Project Info
+    const isPublished = isPublishedApp();
+
+    // Load Project Info (Use CLEAN_PROJECT_INFO by default)
     const savedProject = localStorage.getItem(getSchoolStorageKey(npsn, 'project'));
-    let loadedProjectInfo = INITIAL_PROJECT_INFO;
+    let loadedProjectInfo = CLEAN_PROJECT_INFO;
     if (savedProject) {
       try {
         const p = JSON.parse(savedProject);
-        loadedProjectInfo = {
-          ...INITIAL_PROJECT_INFO,
-          ...p,
-          dataSekolah: { ...INITIAL_PROJECT_INFO.dataSekolah, ...(p.dataSekolah || {}), npsn },
-          alamatLengkap: { ...INITIAL_PROJECT_INFO.alamatLengkap, ...(p.alamatLengkap || {}) },
-          timP2sp: {
-            ...INITIAL_PROJECT_INFO.timP2sp,
-            ...(p.timP2sp || {}),
-          },
-        };
+        const isDemoProj =
+          isPublished &&
+          isDemoSchoolData(
+            npsn,
+            p.dataSekolah?.namaSekolah || p.namaInstansi,
+            checkSchoolHasRealTransactions(npsn)
+          );
+        if (!isDemoProj) {
+          loadedProjectInfo = {
+            ...CLEAN_PROJECT_INFO,
+            ...p,
+            dataSekolah: { ...CLEAN_PROJECT_INFO.dataSekolah, ...(p.dataSekolah || {}), npsn },
+            alamatLengkap: { ...CLEAN_PROJECT_INFO.alamatLengkap, ...(p.alamatLengkap || {}) },
+            timP2sp: {
+              ...CLEAN_PROJECT_INFO.timP2sp,
+              ...(p.timP2sp || {}),
+            },
+          };
+        }
       } catch (e) {
         console.error('Error loading project info', e);
       }
-    } else if (npsn === '20209999') {
-      const smpData = createSampleSecondarySchool();
-      loadedProjectInfo = smpData.projectInfo;
+    } else {
+      const wsProfile = workspaces?.find((w) => w.npsn === npsn);
+      if (wsProfile) {
+        loadedProjectInfo = {
+          ...CLEAN_PROJECT_INFO,
+          namaProyek: wsProfile.namaSekolah ? `Program Revitalisasi Sarpras ${wsProfile.namaSekolah}` : CLEAN_PROJECT_INFO.namaProyek,
+          totalPaguAnggaran: wsProfile.paguAnggaran || 0,
+          namaInstansi: wsProfile.namaSekolah ? `${wsProfile.namaSekolah} (Tim P2SP)` : 'Tim P2SP Revitalisasi Sekolah',
+          dataSekolah: {
+            ...CLEAN_PROJECT_INFO.dataSekolah,
+            namaSekolah: wsProfile.namaSekolah || '',
+            npsn: npsn,
+            jenjang: wsProfile.jenjang || 'SD',
+          },
+          alamatLengkap: {
+            ...CLEAN_PROJECT_INFO.alamatLengkap,
+            kabupatenKota: wsProfile.kabupatenKota || 'Kabupaten Bogor',
+          },
+        };
+      }
     }
 
-    // Load BKU Transactions
+    // Load BKU Transactions - Defaults to clean empty array []
     const savedTx = localStorage.getItem(getSchoolStorageKey(npsn, 'bku'));
-    let loadedTx: CashTransaction[] = INITIAL_TRANSACTIONS;
+    let loadedTx: CashTransaction[] = [];
     if (savedTx) {
       try {
-        loadedTx = JSON.parse(savedTx);
+        const parsed = JSON.parse(savedTx);
+        if (Array.isArray(parsed)) {
+          if (isPublished && isDemoTransactions(parsed)) {
+            loadedTx = [];
+          } else {
+            loadedTx = parsed;
+          }
+        }
       } catch (e) {
         console.error(e);
       }
-    } else if (npsn === '20209999') {
-      loadedTx = createSampleSecondarySchool().transactions;
     }
 
-    // Load Kwitansi
+    // Load Kwitansi - Defaults to clean empty array []
     const savedKw = localStorage.getItem(getSchoolStorageKey(npsn, 'kwitansi'));
-    let loadedKw: Kwitansi[] = INITIAL_KWITANSI_LIST;
+    let loadedKw: Kwitansi[] = [];
     if (savedKw) {
       try {
-        loadedKw = JSON.parse(savedKw);
+        const parsed = JSON.parse(savedKw);
+        if (Array.isArray(parsed)) {
+          const isDemoKw = isPublished && parsed.every((k: any) => ['kwt-001', 'kwt-002', 'kwt-003'].includes(k.id));
+          if (!isDemoKw) loadedKw = parsed;
+        }
       } catch (e) {
         console.error(e);
       }
-    } else if (npsn === '20209999') {
-      loadedKw = [];
     }
 
-    // Load Payroll Harian
+    // Load Payroll Harian - Defaults to clean empty array []
     const savedPh = localStorage.getItem(getSchoolStorageKey(npsn, 'payroll_h'));
-    let loadedPh: PayrollHarianBatch[] = INITIAL_PAYROLL_HARIAN;
+    let loadedPh: PayrollHarianBatch[] = [];
     if (savedPh) {
       try {
-        loadedPh = JSON.parse(savedPh);
+        const parsed = JSON.parse(savedPh);
+        if (Array.isArray(parsed)) {
+          const isDemoPh = isPublished && parsed.every((p: any) => p.id === 'pr-batch-001');
+          if (!isDemoPh) loadedPh = parsed;
+        }
       } catch (e) {
         console.error(e);
       }
-    } else if (npsn === '20209999') {
-      loadedPh = [];
     }
 
-    // Load Payroll Borongan
+    // Load Payroll Borongan - Defaults to clean empty array []
     const savedPb = localStorage.getItem(getSchoolStorageKey(npsn, 'payroll_b'));
-    let loadedPb: WorkerBoronganItem[] = INITIAL_BORONGAN_LIST;
+    let loadedPb: WorkerBoronganItem[] = [];
     if (savedPb) {
       try {
-        loadedPb = JSON.parse(savedPb);
+        const parsed = JSON.parse(savedPb);
+        if (Array.isArray(parsed)) {
+          const isDemoPb = isPublished && parsed.every((b: any) => ['brg-001', 'brg-002'].includes(b.id));
+          if (!isDemoPb) loadedPb = parsed;
+        }
       } catch (e) {
         console.error(e);
       }
-    } else if (npsn === '20209999') {
-      loadedPb = [];
     }
 
-    // Load WBS
+    // Load WBS - Defaults to CLEAN_WBS (0% realisasi)
     const savedWbs = localStorage.getItem(getSchoolStorageKey(npsn, 'wbs'));
-    let loadedWbs: WBSItem[] = INITIAL_WBS;
+    let loadedWbs: WBSItem[] = CLEAN_WBS;
     if (savedWbs) {
       try {
-        loadedWbs = JSON.parse(savedWbs);
+        const parsed = JSON.parse(savedWbs);
+        if (Array.isArray(parsed) && parsed.length > 0) loadedWbs = parsed;
       } catch (e) {
         console.error(e);
       }
@@ -456,36 +640,35 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let loadedRab: RABMasterItem[] = INITIAL_RAB_MASTER;
     if (savedRab) {
       try {
-        loadedRab = JSON.parse(savedRab);
+        const parsed = JSON.parse(savedRab);
+        if (Array.isArray(parsed) && parsed.length > 0) loadedRab = parsed;
       } catch (e) {
         console.error(e);
       }
     }
 
-    // Load Daily Logs
+    // Load Daily Logs - Defaults to clean empty array []
     const savedDaily = localStorage.getItem(getSchoolStorageKey(npsn, 'daily'));
-    let loadedDaily: DailyWorkLog[] = INITIAL_DAILY_LOGS;
+    let loadedDaily: DailyWorkLog[] = [];
     if (savedDaily) {
       try {
-        loadedDaily = JSON.parse(savedDaily);
+        const parsed = JSON.parse(savedDaily);
+        if (Array.isArray(parsed)) loadedDaily = parsed;
       } catch (e) {
         console.error(e);
       }
-    } else if (npsn === '20209999') {
-      loadedDaily = [];
     }
 
-    // Load Weekly Recaps
+    // Load Weekly Recaps - Defaults to clean empty array []
     const savedWeekly = localStorage.getItem(getSchoolStorageKey(npsn, 'weekly'));
-    let loadedWeekly: WeeklyRecap[] = INITIAL_WEEKLY_RECAPS;
+    let loadedWeekly: WeeklyRecap[] = [];
     if (savedWeekly) {
       try {
-        loadedWeekly = JSON.parse(savedWeekly);
+        const parsed = JSON.parse(savedWeekly);
+        if (Array.isArray(parsed)) loadedWeekly = parsed;
       } catch (e) {
         console.error(e);
       }
-    } else if (npsn === '20209999') {
-      loadedWeekly = [];
     }
 
     // Load Wages & Materials
@@ -493,7 +676,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let loadedWages: StandardWageRate[] = INITIAL_STANDARD_WAGES;
     if (savedWages) {
       try {
-        loadedWages = JSON.parse(savedWages);
+        const parsed = JSON.parse(savedWages);
+        if (Array.isArray(parsed) && parsed.length > 0) loadedWages = parsed;
       } catch (e) {
         console.error(e);
       }
@@ -503,10 +687,26 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let loadedMaterials: StandardMaterialPrice[] = INITIAL_STANDARD_MATERIALS;
     if (savedMaterials) {
       try {
-        loadedMaterials = JSON.parse(savedMaterials);
+        const parsed = JSON.parse(savedMaterials);
+        if (Array.isArray(parsed) && parsed.length > 0) loadedMaterials = parsed;
       } catch (e) {
         console.error(e);
       }
+    }
+
+    const savedPhotos = localStorage.getItem(getSchoolStorageKey(npsn, 'photos'));
+    let loadedPhotos: ProgressPhotoItem[] = [];
+    if (savedPhotos) {
+      try {
+        const parsed = JSON.parse(savedPhotos);
+        if (Array.isArray(parsed)) loadedPhotos = parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    // Jika masih kosong pada proyek awal, sediakan 2 foto demo resmi
+    if (loadedPhotos.length === 0) {
+      loadedPhotos = createDemoProgressPhotos(4);
     }
 
     return {
@@ -521,6 +721,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       weeklyRecaps: loadedWeekly,
       standardWages: loadedWages,
       standardMaterials: loadedMaterials,
+      progressPhotos: loadedPhotos,
     };
   };
 
@@ -538,6 +739,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [weeklyRecaps, setWeeklyRecaps] = useState<WeeklyRecap[]>(initialData.weeklyRecaps);
   const [standardWages, setStandardWages] = useState<StandardWageRate[]>(initialData.standardWages);
   const [standardMaterials, setStandardMaterials] = useState<StandardMaterialPrice[]>(initialData.standardMaterials);
+  const [progressPhotos, setProgressPhotos] = useState<ProgressPhotoItem[]>(initialData.progressPhotos || []);
 
   // Track export state
   const [lastExportedAt, setLastExportedAt] = useState<string | null>(() => {
@@ -555,6 +757,147 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.setItem(GLOBAL_STORAGE_KEYS.ACTIVE_NPSN, activeNpsn);
   }, [activeNpsn]);
 
+  // Cloud Sync on Mount: Fetch from Firestore & preserve previously filled data
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initializeFromCloud() {
+      try {
+        setCloudSyncStatus('SYNCING');
+        const cloudWorkspaces = await fetchWorkspacesFromCloud();
+        if (!isMounted) return;
+
+        if (cloudWorkspaces && cloudWorkspaces.length > 0) {
+          const isPublished = isPublishedApp();
+          // In published mode, filter out fake demo schools if real user data exists
+          const validCloudWorkspaces = isPublished
+            ? cloudWorkspaces.filter((w) => !isDemoSchoolData(w.npsn, w.namaSekolah))
+            : cloudWorkspaces;
+
+          if (validCloudWorkspaces.length > 0) {
+            setWorkspaces((prev) => {
+              const merged = [...validCloudWorkspaces];
+              prev.forEach((localW) => {
+                if (!merged.some((m) => m.npsn === localW.npsn)) {
+                  if (
+                    !isPublished ||
+                    !isDemoSchoolData(
+                      localW.npsn,
+                      localW.namaSekolah,
+                      checkSchoolHasRealTransactions(localW.npsn)
+                    )
+                  ) {
+                    merged.push(localW);
+                  }
+                }
+              });
+              return merged;
+            });
+
+            const targetNpsn =
+              activeNpsn && validCloudWorkspaces.some((w) => w.npsn === activeNpsn)
+                ? activeNpsn
+                : validCloudWorkspaces[0].npsn;
+
+            if (targetNpsn) {
+              setActiveNpsn(targetNpsn);
+              const cloudData = await fetchSchoolDataFromCloud(targetNpsn);
+              if (isMounted && cloudData) {
+                if (isPublished && isDemoTransactions(cloudData.transactions)) {
+                  cloudData.transactions = [];
+                }
+                const hasLocalRealTx = checkSchoolHasRealTransactions(targetNpsn);
+                // If local has no custom data or cloud has transactions, populate from cloud
+                if (!hasLocalRealTx || (cloudData.transactions && cloudData.transactions.length > 0)) {
+                  if (cloudData.projectInfo) setProjectInfo(cloudData.projectInfo);
+                  if (cloudData.transactions) setTransactions(cloudData.transactions);
+                  if (cloudData.kwitansiList) setKwitansiList(cloudData.kwitansiList);
+                  if (cloudData.payrollHarian) setPayrollHarian(cloudData.payrollHarian);
+                  if (cloudData.payrollBorongan) setPayrollBorongan(cloudData.payrollBorongan);
+                  if (cloudData.wbsList) setWbsList(cloudData.wbsList);
+                  if (cloudData.rabMaster) setRabMaster(cloudData.rabMaster);
+                  if (cloudData.dailyLogs) setDailyLogs(cloudData.dailyLogs);
+                  if (cloudData.weeklyRecaps) setWeeklyRecaps(cloudData.weeklyRecaps);
+                  if (cloudData.standardWages) setStandardWages(cloudData.standardWages);
+                  if (cloudData.standardMaterials) setStandardMaterials(cloudData.standardMaterials);
+                }
+              }
+            }
+          }
+        }
+        setCloudSyncStatus('ONLINE_SYNCED');
+      } catch (err) {
+        console.warn('Initial cloud sync error:', err);
+        setCloudSyncStatus('OFFLINE_LOCAL');
+      }
+    }
+
+    initializeFromCloud();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Debounced auto-sync to Cloud Firestore on any data changes
+  useEffect(() => {
+    if (!activeNpsn || activeNpsn.trim() === '') return;
+    if (
+      isPublishedApp() &&
+      isDemoSchoolData(
+        activeNpsn,
+        projectInfo.dataSekolah?.namaSekolah,
+        hasRealUserTransactions(transactions)
+      )
+    ) {
+      // Avoid polluting Firestore with demo data in published mode
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setCloudSyncStatus('SYNCING');
+        const currentWs = workspaces.find((w) => w.npsn === activeNpsn);
+        if (currentWs) {
+          await syncWorkspaceMetaToCloud(currentWs);
+        }
+        await syncSchoolDataToCloud(activeNpsn, {
+          projectInfo,
+          transactions,
+          kwitansiList,
+          payrollHarian,
+          payrollBorongan,
+          wbsList,
+          rabMaster,
+          dailyLogs,
+          weeklyRecaps,
+          standardWages,
+          standardMaterials,
+        });
+        setCloudSyncStatus('ONLINE_SYNCED');
+      } catch (e) {
+        console.warn('Cloud sync save failed:', e);
+        setCloudSyncStatus('OFFLINE_LOCAL');
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [
+    activeNpsn,
+    projectInfo,
+    transactions,
+    kwitansiList,
+    payrollHarian,
+    payrollBorongan,
+    wbsList,
+    rabMaster,
+    dailyLogs,
+    weeklyRecaps,
+    standardWages,
+    standardMaterials,
+    workspaces,
+  ]);
+
   // When activeNpsn changes, reload dataset into state
   const applyLoadedDataset = useCallback((npsn: string) => {
     const data = loadSchoolDataset(npsn);
@@ -569,6 +912,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setWeeklyRecaps(data.weeklyRecaps);
     setStandardWages(data.standardWages);
     setStandardMaterials(data.standardMaterials);
+    setProgressPhotos(data.progressPhotos);
     setLastExportedAt(localStorage.getItem(GLOBAL_STORAGE_KEYS.LAST_EXPORT_PREFIX + npsn));
     setHasUnsavedExportChanges(false);
   }, []);
@@ -637,6 +981,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!activeNpsn) return;
     localStorage.setItem(getSchoolStorageKey(activeNpsn, 'materials'), JSON.stringify(standardMaterials));
   }, [standardMaterials, activeNpsn]);
+
+  useEffect(() => {
+    if (!activeNpsn) return;
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'photos'), JSON.stringify(progressPhotos));
+    setHasUnsavedExportChanges(true);
+  }, [progressPhotos, activeNpsn]);
 
   // Keep workspace profile in sync with project info updates
   useEffect(() => {
@@ -786,67 +1136,31 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       warnaTema: profileData.warnaTema || 'emerald',
     };
 
-    // Prepare initial data based on template
-    let newProjectInfo: ProjectInfo;
-    let newTx: CashTransaction[] = [];
-    let newKw: Kwitansi[] = [];
-    let newPh: PayrollHarianBatch[] = [];
-    let newPb: WorkerBoronganItem[] = [];
-    let newWbs: WBSItem[] = INITIAL_WBS;
-    let newRab: RABMasterItem[] = INITIAL_RAB_MASTER;
-    let newDaily: DailyWorkLog[] = [];
-    let newWeekly: WeeklyRecap[] = [];
-
-    if (templateType === 'smp_rehab') {
-      const sample = createSampleSecondarySchool();
-      newProjectInfo = {
-        ...sample.projectInfo,
-        dataSekolah: {
-          ...sample.projectInfo.dataSekolah,
-          namaSekolah: profileData.namaSekolah,
-          npsn: cleanNpsn,
-          jenjang: profileData.jenjang,
-        },
-        totalPaguAnggaran: profileData.paguAnggaran,
-        namaInstansi: `${profileData.namaSekolah} (Tim P2SP)`,
-      };
-      newTx = sample.transactions;
-    } else if (templateType === 'blank') {
-      newProjectInfo = {
-        ...INITIAL_PROJECT_INFO,
-        namaProyek: `Program Revitalisasi Sarpras ${profileData.namaSekolah}`,
-        totalPaguAnggaran: profileData.paguAnggaran,
-        namaInstansi: profileData.namaSekolah,
-        dataSekolah: {
-          ...INITIAL_PROJECT_INFO.dataSekolah,
-          namaSekolah: profileData.namaSekolah,
-          npsn: cleanNpsn,
-          jenjang: profileData.jenjang,
-        },
-      };
-      newWbs = INITIAL_WBS.map((w) => ({ ...w, progresRealisasi: 0, biayaRealisasi: 0 }));
-      newRab = INITIAL_RAB_MASTER.map((r) => ({ ...r, progresRealisasi: 0, biayaRealisasi: 0 }));
-    } else {
-      // SD Lengkap
-      newProjectInfo = {
-        ...INITIAL_PROJECT_INFO,
-        namaProyek: `Revitalisasi Ruang Kelas & Sarana Prasarana ${profileData.namaSekolah}`,
-        totalPaguAnggaran: profileData.paguAnggaran,
-        namaInstansi: `${profileData.namaSekolah} (Tim P2SP)`,
-        dataSekolah: {
-          ...INITIAL_PROJECT_INFO.dataSekolah,
-          namaSekolah: profileData.namaSekolah,
-          npsn: cleanNpsn,
-          jenjang: profileData.jenjang,
-        },
-      };
-      newTx = INITIAL_TRANSACTIONS;
-      newKw = INITIAL_KWITANSI_LIST;
-      newPh = INITIAL_PAYROLL_HARIAN;
-      newPb = INITIAL_BORONGAN_LIST;
-      newDaily = INITIAL_DAILY_LOGS;
-      newWeekly = INITIAL_WEEKLY_RECAPS;
-    }
+    // Prepare initial data based on template - always clean empty records
+    const newProjectInfo: ProjectInfo = {
+      ...CLEAN_PROJECT_INFO,
+      namaProyek: `Program Revitalisasi Sarpras ${profileData.namaSekolah}`,
+      totalPaguAnggaran: profileData.paguAnggaran,
+      namaInstansi: `${profileData.namaSekolah} (Tim P2SP)`,
+      dataSekolah: {
+        ...CLEAN_PROJECT_INFO.dataSekolah,
+        namaSekolah: profileData.namaSekolah,
+        npsn: cleanNpsn,
+        jenjang: profileData.jenjang,
+      },
+      alamatLengkap: {
+        ...CLEAN_PROJECT_INFO.alamatLengkap,
+        kabupatenKota: profileData.kabupatenKota || 'Kabupaten Bogor',
+      },
+    };
+    const newTx: CashTransaction[] = [];
+    const newKw: Kwitansi[] = [];
+    const newPh: PayrollHarianBatch[] = [];
+    const newPb: WorkerBoronganItem[] = [];
+    const newWbs: WBSItem[] = CLEAN_WBS;
+    const newRab: RABMasterItem[] = INITIAL_RAB_MASTER;
+    const newDaily: DailyWorkLog[] = [];
+    const newWeekly: WeeklyRecap[] = [];
 
     // Save newly created school to localStorage prefix
     localStorage.setItem(getSchoolStorageKey(cleanNpsn, 'project'), JSON.stringify(newProjectInfo));
@@ -860,6 +1174,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.setItem(getSchoolStorageKey(cleanNpsn, 'weekly'), JSON.stringify(newWeekly));
     localStorage.setItem(getSchoolStorageKey(cleanNpsn, 'wages'), JSON.stringify(INITIAL_STANDARD_WAGES));
     localStorage.setItem(getSchoolStorageKey(cleanNpsn, 'materials'), JSON.stringify(INITIAL_STANDARD_MATERIALS));
+
+    // Sync new workspace to cloud
+    syncWorkspaceMetaToCloud(newProfile);
+    syncSchoolDataToCloud(cleanNpsn, {
+      projectInfo: newProjectInfo,
+      transactions: newTx,
+      kwitansiList: newKw,
+      payrollHarian: newPh,
+      payrollBorongan: newPb,
+      wbsList: newWbs,
+      rabMaster: newRab,
+      dailyLogs: newDaily,
+      weeklyRecaps: newWeekly,
+      standardWages: INITIAL_STANDARD_WAGES,
+      standardMaterials: INITIAL_STANDARD_MATERIALS,
+    });
 
     // Update list & switch to newly created
     setWorkspaces((prev) => [newProfile, ...prev]);
@@ -894,6 +1224,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       localStorage.removeItem(getSchoolStorageKey(targetNpsn, k));
     });
     localStorage.removeItem(GLOBAL_STORAGE_KEYS.LAST_EXPORT_PREFIX + targetNpsn);
+
+    // Delete from cloud
+    deleteSchoolFromCloud(targetNpsn);
 
     const remaining = workspaces.filter((w) => w.npsn !== targetNpsn);
     setWorkspaces(remaining);
@@ -1151,7 +1484,37 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // State manipulation methods for Project Data
   const updateProjectInfo = (info: Partial<ProjectInfo>) => {
-    setProjectInfo((prev) => ({ ...prev, ...info }));
+    setProjectInfo((prev) => {
+      const next = { ...prev, ...info };
+      const newNpsn = next.dataSekolah?.npsn?.trim();
+      if (newNpsn && newNpsn !== '' && newNpsn !== activeNpsn) {
+        // Move local storage keys from activeNpsn to newNpsn
+        const oldNpsn = activeNpsn;
+        const keysToCopy = ['bku', 'kwitansi', 'payroll_h', 'payroll_b', 'wbs', 'rab_master', 'daily', 'weekly', 'wages', 'materials'];
+        keysToCopy.forEach((k) => {
+          const val = localStorage.getItem(getSchoolStorageKey(oldNpsn, k));
+          if (val) {
+            localStorage.setItem(getSchoolStorageKey(newNpsn, k), val);
+          }
+        });
+        localStorage.setItem(getSchoolStorageKey(newNpsn, 'project'), JSON.stringify(next));
+
+        setWorkspaces((prevWs) =>
+          prevWs.map((w) =>
+            w.npsn === oldNpsn
+              ? {
+                  ...w,
+                  npsn: newNpsn,
+                  namaSekolah: next.dataSekolah?.namaSekolah || w.namaSekolah,
+                  jenjang: next.dataSekolah?.jenjang || w.jenjang,
+                }
+              : w
+          )
+        );
+        setActiveNpsn(newNpsn);
+      }
+      return next;
+    });
   };
 
   const addTransaction = (tx: Omit<CashTransaction, 'id'>) => {
@@ -1300,6 +1663,273 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setTransactions((prev) => [...prev, ...newTransactions]);
     setKwitansiList((prev) => [...newKwitansis, ...prev]);
+  };
+
+  const addBatchKwitansiAndWeeklyWages = (
+    plans: GeneratedDailyPurchasePlan[],
+    wages: WeeklyWagesCalculationResult,
+    mingguKe: number,
+    updatedRAB?: RABMasterItem[],
+    photos?: ProgressPhotoItem[]
+  ) => {
+    const approvedPlans = plans.filter((p) => p.isApproved && p.items.length > 0 && p.totalNominal > 0);
+    const newTransactions: CashTransaction[] = [];
+    const newKwitansis: Kwitansi[] = [];
+    let newPayrollBatch: PayrollHarianBatch | null = null;
+    const schoolName = projectInfo.dataSekolah?.namaSekolah || projectInfo.namaInstansi || 'Sekolah';
+    const desaName = projectInfo.desa || projectInfo.alamatLengkap?.desaKelurahan || 'Bogor';
+
+    // 1. Material Plans (Kwitansi Pembelian Bahan Harian Senin s/d Sabtu)
+    approvedPlans.forEach((plan, idx) => {
+      const kwtId = `kwt-batch-${Date.now()}-${idx}`;
+      const txId = `tx-bku-${Date.now()}-${idx}`;
+
+      const tx: CashTransaction = {
+        id: txId,
+        tanggal: plan.tanggal,
+        noBukti: plan.nomorKwitansi,
+        uraian: `Belanja Material Harian (${plan.namaToko}): ${plan.items.map((i) => `${i.namaBarang} (${i.volume} ${i.satuan})`).join(', ')}`,
+        jenisKas: plan.jenisKas,
+        jenisTransaksi: 'PENGELUARAN',
+        kategori: 'BELANJA_MATERIAL',
+        nominal: plan.totalNominal,
+        kodeAkun: '5.2.01',
+        penerimaAtauPemberi: plan.namaToko,
+        keterangan: `Kwitansi Harian Progres Fisik (${plan.kategoriPekerjaan})`,
+        linkedDocId: kwtId,
+        linkedDocType: 'KWITANSI',
+      };
+      newTransactions.push(tx);
+
+      const kw: Kwitansi = {
+        id: kwtId,
+        nomorKwitansi: plan.nomorKwitansi,
+        tanggal: plan.tanggal,
+        telahTerimaDari: `Bendahara P2SP Program Revitalisasi ${schoolName}`,
+        uangSebanyak: plan.totalNominal,
+        terbilang: terbilangRupiah(plan.totalNominal),
+        untukPembayaran: `Pembelian Bahan/Material Konstruksi Revitalisasi (${plan.kategoriPekerjaan})`,
+        penerimaNama: plan.namaToko,
+        penerimaAlamat: plan.alamatToko || 'Jl. Lokasi Proyek Sekolah',
+        tempatTtd: desaName,
+        items: plan.items,
+        jenisKasPembayaran: plan.jenisKas,
+        isBookedToBKU: true,
+        bkuTransactionId: txId,
+        status: 'LUNAS',
+        progressCategory: plan.kategoriPekerjaan,
+      };
+      newKwitansis.push(kw);
+    });
+
+    // 2. Upah Tukang & Tenaga Kerja (Mingguan)
+    if (wages.upahTukang && wages.upahTukang.nominal > 0) {
+      const spjId = `spj-wages-${Date.now()}`;
+      const txId = `tx-bku-tukang-${Date.now()}`;
+
+      const tx: CashTransaction = {
+        id: txId,
+        tanggal: wages.tanggalSelesai,
+        noBukti: wages.upahTukang.nomorKwitansi,
+        uraian: wages.upahTukang.uraian,
+        jenisKas: 'TUNAI',
+        jenisTransaksi: 'PENGELUARAN',
+        kategori: 'UPAH_TUKANG',
+        nominal: wages.upahTukang.nominal,
+        kodeAkun: '5.2.02',
+        penerimaAtauPemberi: wages.upahTukang.penerima,
+        keterangan: `SPJ Upah Kerja Mingguan W${mingguKe}`,
+        linkedDocId: spjId,
+        linkedDocType: 'PAYROLL_HARIAN',
+      };
+      newTransactions.push(tx);
+
+      newPayrollBatch = {
+        id: spjId,
+        noSpj: wages.upahTukang.nomorKwitansi,
+        periodeAwal: wages.tanggalMulai,
+        periodeAkhir: wages.tanggalSelesai,
+        mingguKe,
+        pekerjaanTerkait: `Pekerjaan Fisik Konstruksi Minggu Ke-${mingguKe}`,
+        workers: wages.upahTukang.workersDetail || [],
+        totalDibayarkan: wages.upahTukang.nominal,
+        tanggalBayar: wages.tanggalSelesai,
+        jenisKas: 'TUNAI',
+        isBookedToBKU: true,
+        bkuTransactionId: txId,
+        photos: photos || [],
+      };
+    }
+
+    // 3. Upah / Honor Tenaga Perencana (Mingguan)
+    if (wages.upahPerencana && wages.upahPerencana.nominal > 0) {
+      const kwtId = `kwt-plan-${Date.now()}`;
+      const txId = `tx-bku-plan-${Date.now()}`;
+
+      const tx: CashTransaction = {
+        id: txId,
+        tanggal: wages.tanggalSelesai,
+        noBukti: wages.upahPerencana.nomorKwitansi,
+        uraian: wages.upahPerencana.uraian,
+        jenisKas: 'TUNAI',
+        jenisTransaksi: 'PENGELUARAN',
+        kategori: 'OPERASIONAL',
+        nominal: wages.upahPerencana.nominal,
+        kodeAkun: '5.2.03',
+        penerimaAtauPemberi: wages.upahPerencana.penerima,
+        keterangan: `Honorarium Perencanaan W${mingguKe}`,
+        linkedDocId: kwtId,
+        linkedDocType: 'KWITANSI',
+      };
+      newTransactions.push(tx);
+
+      const kw: Kwitansi = {
+        id: kwtId,
+        nomorKwitansi: wages.upahPerencana.nomorKwitansi,
+        tanggal: wages.tanggalSelesai,
+        telahTerimaDari: `Bendahara P2SP Program Revitalisasi ${schoolName}`,
+        uangSebanyak: wages.upahPerencana.nominal,
+        terbilang: wages.upahPerencana.terbilang,
+        untukPembayaran: wages.upahPerencana.uraian,
+        penerimaNama: wages.upahPerencana.penerima,
+        penerimaAlamat: 'Konsultan / Tenaga Teknis Perencana P2SP',
+        tempatTtd: desaName,
+        items: [],
+        jenisKasPembayaran: 'TUNAI',
+        isBookedToBKU: true,
+        bkuTransactionId: txId,
+        status: 'LUNAS',
+        progressCategory: 'Honor Tenaga Perencana',
+      };
+      newKwitansis.push(kw);
+    }
+
+    // 4. Upah / Honor Tenaga Pengawas (Mingguan)
+    if (wages.upahPengawas && wages.upahPengawas.nominal > 0) {
+      const kwtId = `kwt-was-${Date.now()}`;
+      const txId = `tx-bku-was-${Date.now()}`;
+
+      const tx: CashTransaction = {
+        id: txId,
+        tanggal: wages.tanggalSelesai,
+        noBukti: wages.upahPengawas.nomorKwitansi,
+        uraian: wages.upahPengawas.uraian,
+        jenisKas: 'TUNAI',
+        jenisTransaksi: 'PENGELUARAN',
+        kategori: 'OPERASIONAL',
+        nominal: wages.upahPengawas.nominal,
+        kodeAkun: '5.2.04',
+        penerimaAtauPemberi: wages.upahPengawas.penerima,
+        keterangan: `Honorarium Pengawasan W${mingguKe}`,
+        linkedDocId: kwtId,
+        linkedDocType: 'KWITANSI',
+      };
+      newTransactions.push(tx);
+
+      const kw: Kwitansi = {
+        id: kwtId,
+        nomorKwitansi: wages.upahPengawas.nomorKwitansi,
+        tanggal: wages.tanggalSelesai,
+        telahTerimaDari: `Bendahara P2SP Program Revitalisasi ${schoolName}`,
+        uangSebanyak: wages.upahPengawas.nominal,
+        terbilang: wages.upahPengawas.terbilang,
+        untukPembayaran: wages.upahPengawas.uraian,
+        penerimaNama: wages.upahPengawas.penerima,
+        penerimaAlamat: 'Tenaga Pengawas Lapangan P2SP',
+        tempatTtd: desaName,
+        items: [],
+        jenisKasPembayaran: 'TUNAI',
+        isBookedToBKU: true,
+        bkuTransactionId: txId,
+        status: 'LUNAS',
+        progressCategory: 'Honor Tenaga Pengawas',
+      };
+      newKwitansis.push(kw);
+    }
+
+    // 5. Upah Administrasi & Pengelolaan (Mingguan)
+    if (wages.upahAdministrasi && wages.upahAdministrasi.nominal > 0) {
+      const kwtId = `kwt-adm-${Date.now()}`;
+      const txId = `tx-bku-adm-${Date.now()}`;
+
+      const tx: CashTransaction = {
+        id: txId,
+        tanggal: wages.tanggalSelesai,
+        noBukti: wages.upahAdministrasi.nomorKwitansi,
+        uraian: wages.upahAdministrasi.uraian,
+        jenisKas: 'TUNAI',
+        jenisTransaksi: 'PENGELUARAN',
+        kategori: 'OPERASIONAL',
+        nominal: wages.upahAdministrasi.nominal,
+        kodeAkun: '5.2.05',
+        penerimaAtauPemberi: wages.upahAdministrasi.penerima,
+        keterangan: `Biaya Pengelolaan & Administrasi P2SP W${mingguKe}`,
+        linkedDocId: kwtId,
+        linkedDocType: 'KWITANSI',
+      };
+      newTransactions.push(tx);
+
+      const kw: Kwitansi = {
+        id: kwtId,
+        nomorKwitansi: wages.upahAdministrasi.nomorKwitansi,
+        tanggal: wages.tanggalSelesai,
+        telahTerimaDari: `Bendahara P2SP Program Revitalisasi ${schoolName}`,
+        uangSebanyak: wages.upahAdministrasi.nominal,
+        terbilang: wages.upahAdministrasi.terbilang,
+        untukPembayaran: wages.upahAdministrasi.uraian,
+        penerimaNama: wages.upahAdministrasi.penerima,
+        penerimaAlamat: 'Sekretariat P2SP',
+        tempatTtd: desaName,
+        items: [],
+        jenisKasPembayaran: 'TUNAI',
+        isBookedToBKU: true,
+        bkuTransactionId: txId,
+        status: 'LUNAS',
+        progressCategory: 'Biaya Pengelolaan P2SP',
+      };
+      newKwitansis.push(kw);
+    }
+
+    // Simpan seluruh data ke state kas & kwitansi & payroll
+    setTransactions((prev) => [...prev, ...newTransactions]);
+    setKwitansiList((prev) => [...newKwitansis, ...prev]);
+    if (newPayrollBatch) {
+      setPayrollHarian((prev) => [newPayrollBatch!, ...prev]);
+    }
+    if (photos && photos.length > 0) {
+      setProgressPhotos((prev) => [...photos, ...prev]);
+    }
+
+    if (updatedRAB) {
+      setRabMaster(updatedRAB);
+      setWbsList(
+        updatedRAB.map((item) => ({
+          id: item.id,
+          kode: item.kode,
+          namaPekerjaan: item.namaPekerjaan,
+          bobotRencana: item.bobotRencana,
+          progresRealisasi: item.progresRealisasi,
+          volumeRAB: item.volumeRAB,
+          satuan: item.satuan,
+          biayaRAB: item.biayaRAB,
+          biayaRealisasi: item.biayaRealisasi,
+        }))
+      );
+    }
+  };
+
+  const addProgressPhotos = (newPhotos: ProgressPhotoItem[]) => {
+    setProgressPhotos((prev) => [...newPhotos, ...prev]);
+  };
+
+  const deleteProgressPhoto = (id: string) => {
+    setProgressPhotos((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const updateProgressPhotoCaption = (id: string, caption: string) => {
+    setProgressPhotos((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, caption } : p))
+    );
   };
 
   const updateRABMaster = (newList: RABMasterItem[]) => {
@@ -1452,6 +2082,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setStandardWages((prev) => prev.map((w) => (w.id === id ? { ...w, ...wage } : w)));
   };
 
+  const updateStandardWages = (wages: StandardWageRate[]) => {
+    setStandardWages(wages);
+  };
+
   const deleteStandardWage = (id: string) => {
     setStandardWages((prev) => prev.filter((w) => w.id !== id));
   };
@@ -1468,38 +2102,61 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setStandardMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, ...material } : m)));
   };
 
+  const updateStandardMaterials = (materials: StandardMaterialPrice[]) => {
+    setStandardMaterials(materials);
+  };
+
   const deleteStandardMaterial = (id: string) => {
     setStandardMaterials((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const resetToCleanData = () => {
+    setTransactions([]);
+    setKwitansiList([]);
+    setPayrollHarian([]);
+    setPayrollBorongan([]);
+    setDailyLogs([]);
+    setWeeklyRecaps([]);
+    setWbsList(CLEAN_WBS);
+
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'bku'), JSON.stringify([]));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'kwitansi'), JSON.stringify([]));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'payroll_h'), JSON.stringify([]));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'payroll_b'), JSON.stringify([]));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'daily'), JSON.stringify([]));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'weekly'), JSON.stringify([]));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'wbs'), JSON.stringify(CLEAN_WBS));
+    setHasUnsavedExportChanges(true);
+  };
+
+  const loadDemoSimulationData = () => {
+    setTransactions(INITIAL_TRANSACTIONS);
+    setKwitansiList(INITIAL_KWITANSI_LIST);
+    setPayrollHarian(INITIAL_PAYROLL_HARIAN);
+    setPayrollBorongan(INITIAL_BORONGAN_LIST);
+    setDailyLogs(INITIAL_DAILY_LOGS);
+    setWeeklyRecaps(INITIAL_WEEKLY_RECAPS);
+    setWbsList(INITIAL_WBS);
+    setStandardWages(INITIAL_STANDARD_WAGES);
+    setStandardMaterials(INITIAL_STANDARD_MATERIALS);
+
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'bku'), JSON.stringify(INITIAL_TRANSACTIONS));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'kwitansi'), JSON.stringify(INITIAL_KWITANSI_LIST));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'payroll_h'), JSON.stringify(INITIAL_PAYROLL_HARIAN));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'payroll_b'), JSON.stringify(INITIAL_BORONGAN_LIST));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'daily'), JSON.stringify(INITIAL_DAILY_LOGS));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'weekly'), JSON.stringify(INITIAL_WEEKLY_RECAPS));
+    localStorage.setItem(getSchoolStorageKey(activeNpsn, 'wbs'), JSON.stringify(INITIAL_WBS));
+    setHasUnsavedExportChanges(true);
   };
 
   const resetToDefaultData = () => {
     if (
       window.confirm(
-        `Kembalikan semua data sekolah ${projectInfo.dataSekolah?.namaSekolah || activeNpsn} ke contoh awal? Data saat ini akan direset.`
+        `Kosongkan seluruh data transaksi, kwitansi, dan payroll untuk ${projectInfo.dataSekolah?.namaSekolah || activeNpsn}? Data akan dibersihkan mulai dari nol.`
       )
     ) {
-      if (activeNpsn === '20209999') {
-        const sample = createSampleSecondarySchool();
-        setProjectInfo(sample.projectInfo);
-        setTransactions(sample.transactions);
-        setKwitansiList(sample.kwitansiList);
-        setPayrollHarian(sample.payrollHarian);
-        setPayrollBorongan(sample.payrollBorongan);
-        setWbsList(sample.wbsList);
-        setDailyLogs(sample.dailyLogs);
-        setWeeklyRecaps(sample.weeklyRecaps);
-      } else {
-        setProjectInfo(INITIAL_PROJECT_INFO);
-        setTransactions(INITIAL_TRANSACTIONS);
-        setKwitansiList(INITIAL_KWITANSI_LIST);
-        setPayrollHarian(INITIAL_PAYROLL_HARIAN);
-        setPayrollBorongan(INITIAL_BORONGAN_LIST);
-        setWbsList(INITIAL_WBS);
-        setDailyLogs(INITIAL_DAILY_LOGS);
-        setWeeklyRecaps(INITIAL_WEEKLY_RECAPS);
-        setStandardWages(INITIAL_STANDARD_WAGES);
-        setStandardMaterials(INITIAL_STANDARD_MATERIALS);
-      }
+      resetToCleanData();
     }
   };
 
@@ -1517,6 +2174,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         weeklyRecaps,
         standardWages,
         standardMaterials,
+        progressPhotos,
         summary,
         workspaces,
         activeNpsn,
@@ -1536,7 +2194,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         transferKasBankKeTunai,
         addKwitansi,
         addBatchKwitansi,
+        addBatchKwitansiAndWeeklyWages,
         deleteKwitansi,
+        addProgressPhotos,
+        deleteProgressPhoto,
+        updateProgressPhotoCaption,
         addPayrollHarianBatch,
         deletePayrollHarianBatch,
         addWorkerBorongan,
@@ -1548,11 +2210,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateRABMaster,
         addStandardWage,
         updateStandardWage,
+        updateStandardWages,
         deleteStandardWage,
         addStandardMaterial,
         updateStandardMaterial,
+        updateStandardMaterials,
         deleteStandardMaterial,
         resetToDefaultData,
+        resetToCleanData,
+        loadDemoSimulationData,
+        cloudSyncStatus,
       }}
     >
       {children}

@@ -9,6 +9,126 @@ import {
   WorkerBoronganItem,
 } from '../types';
 
+export const isPublishedApp = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  // If Vite build is production
+  if (import.meta.env.PROD) return true;
+  // If URL hostname matches published environments (ais-pre, Cloud Run, custom domain, etc.)
+  const host = window.location.hostname;
+  if (
+    host.includes('ais-pre') ||
+    (host.includes('.run.app') && !host.includes('ais-dev')) ||
+    (!host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('ais-dev'))
+  ) {
+    return true;
+  }
+  return false;
+};
+
+export const CLEAN_PROJECT_INFO: ProjectInfo = {
+  namaProyek: 'Program Revitalisasi Sarana Prasarana Sekolah P2SP',
+  nomorSuratTugas: '',
+  lokasi: '',
+  desa: '',
+  kecamatan: '',
+  kabupaten: '',
+  provinsi: 'Jawa Barat',
+  tahunAnggaran: '2026',
+  totalPaguAnggaran: 0,
+  namaInstansi: 'Tim P2SP Revitalisasi Sekolah',
+  namaKetuaTPK: '',
+  namaBendahara: '',
+  namaPelaksanaTeknis: '',
+  namaPimpinan: '',
+  namaBank: '',
+  nomorRekeningBank: '',
+  atasNamaRekening: '',
+  targetMulai: '',
+  targetSelesai: '',
+  dataSekolah: {
+    namaSekolah: 'Sekolah Pelaksana Revitalisasi',
+    npsn: '20260001',
+    jenjang: 'SD',
+    statusSekolah: 'NEGERI',
+    nomorSkP2sp: '',
+    tanggalSkP2sp: '',
+  },
+  alamatLengkap: {
+    jalan: '',
+    rtRw: '',
+    desaKelurahan: '',
+    kecamatan: '',
+    kabupatenKota: '',
+    provinsi: 'Jawa Barat',
+    kodePos: '',
+  },
+  timP2sp: {
+    penanggungJawab: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Kepala Sekolah',
+      noHp: '',
+      alamat: '',
+    },
+    ketuaP2sp: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Ketua Komite Sekolah',
+      noHp: '',
+      alamat: '',
+    },
+    sekretarisLogistik: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Guru / Pengelola Sarpras',
+      noHp: '',
+      alamat: '',
+    },
+    bendahara: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Bendahara Sekolah / BOS',
+      noHp: '',
+      alamat: '',
+    },
+    kepalaPelaksana: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Kepala Pelaksana Konstruksi',
+      noHp: '',
+      alamat: '',
+    },
+    keamanan: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Petugas Keamanan',
+      noHp: '',
+      alamat: '',
+    },
+    perencana: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Perencana Teknis (RAB & Gambar)',
+      noHp: '',
+      alamat: '',
+    },
+    pengawas: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Pengawas Teknis Lapangan',
+      noHp: '',
+      alamat: '',
+    },
+    fasilitator: {
+      nama: '',
+      nipNik: '',
+      jabatanAsal: 'Fasilitator Teknis / Pendamping Dinas',
+      noHp: '',
+      alamat: '',
+    },
+  },
+};
+
 export const INITIAL_PROJECT_INFO: ProjectInfo = {
   namaProyek: 'Revitalisasi Ruang Kelas & Sarana Prasarana Sekolah SDN 01 Babakan',
   nomorSuratTugas: '421.2/015/P2SP-SDN01/2026',
@@ -195,6 +315,12 @@ export const INITIAL_WBS: WBSItem[] = [
     biayaRealisasi: 0,
   },
 ];
+
+export const CLEAN_WBS: WBSItem[] = INITIAL_WBS.map((w) => ({
+  ...w,
+  progresRealisasi: 0,
+  biayaRealisasi: 0,
+}));
 
 export const INITIAL_DAILY_LOGS: DailyWorkLog[] = [
   {

@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 @layer base {
+  html, body {
+    max-width: 100vw;
+    width: 100%;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
@@ -8,6 +17,22 @@
   .font-mono {
     font-family: 'JetBrains Mono', monospace;
   }
+
+  #root {
+    width: 100%;
+    max-width: 100vw;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+}
+
+/* Hide scrollbar for smooth touch scroll */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 @media print {

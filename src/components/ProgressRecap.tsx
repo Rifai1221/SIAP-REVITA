@@ -13,10 +13,16 @@ import {
   AlertTriangle,
   Layers,
   Edit2,
+  Camera,
+  Image as ImageIcon,
+  Sparkles,
+  FileCheck2,
+  Upload,
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
-import { DailyWorkLog, WBSItem } from '../types';
+import { DailyWorkLog, WBSItem, ProgressPhotoItem } from '../types';
 import { formatRupiah, formatTanggalIndo } from '../utils/terbilang';
+import { WeeklyPhotoUploader } from './WeeklyPhotoUploader';
 
 type ProgressTab = 'HARIAN' | 'MINGGUAN' | 'BULANAN' | 'TAHUNAN';
 
@@ -27,13 +33,18 @@ export const ProgressRecap: React.FC = () => {
     weeklyRecaps,
     wbsList,
     summary,
+    progressPhotos,
     addDailyLog,
     deleteDailyLog,
     updateWBSItem,
+    addProgressPhotos,
+    deleteProgressPhoto,
+    updateProgressPhotoCaption,
   } = useProject();
 
   const [activeTab, setActiveTab] = useState<ProgressTab>('HARIAN');
   const [showAddDailyModal, setShowAddDailyModal] = useState(false);
+  const [selectedWeekForPhotos, setSelectedWeekForPhotos] = useState<number>(4);
 
   // New Daily Log State
   const [newLog, setNewLog] = useState<{
@@ -286,78 +297,275 @@ export const ProgressRecap: React.FC = () => {
 
       {/* TAB CONTENT: MINGGUAN */}
       {activeTab === 'MINGGUAN' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-7 shadow-xs">
-          <div className="mb-4 pb-3 border-b border-slate-200">
-            <h2 className="text-base font-bold text-slate-900">
-              Laporan Rekapitulasi Progres Mingguan
-            </h2>
-            <p className="text-xs text-slate-500">
-              Evaluasi deviasi rencana vs realisasi kumulatif dan penyerapan dana proyek
-            </p>
+        <div className="space-y-6">
+          {/* 1. Tabel Evaluasi Mingguan */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-7 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-3 border-b border-slate-200">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-700" />
+                  <h2 className="text-base font-bold text-slate-900">
+                    Laporan Rekapitulasi Progres Mingguan
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Evaluasi deviasi rencana vs realisasi kumulatif, penyerapan dana, dan dokumentasi foto lapangan
+                </p>
+              </div>
+
+              <div className="no-print flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('section-foto-mingguan');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="px-3.5 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>+ Upload Foto Mingguan</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 border-y border-slate-300 text-slate-800 font-semibold uppercase text-[11px]">
+                    <th className="py-2.5 px-3">Periode Minggu</th>
+                    <th className="py-2.5 px-3">Rentang Tanggal</th>
+                    <th className="py-2.5 px-3 text-right">Target Rencana (%)</th>
+                    <th className="py-2.5 px-3 text-right">Realisasi (%)</th>
+                    <th className="py-2.5 px-3 text-right">Deviasi (+/-)</th>
+                    <th className="py-2.5 px-3 text-right">Serapan Dana (Rp)</th>
+                    <th className="py-2.5 px-3 text-center">Status Jadwal</th>
+                    <th className="py-2.5 px-3 text-center no-print">Dokumentasi Foto</th>
+                    <th className="py-2.5 px-3">Catatan / Tindak Lanjut</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {weeklyRecaps.map((item) => {
+                    const isPositive = item.deviasi >= 0;
+                    const weekPhotosCount = progressPhotos.filter((p) => p.mingguKe === item.mingguKe).length;
+                    const isSelected = selectedWeekForPhotos === item.mingguKe;
+                    return (
+                      <tr
+                        key={item.mingguKe}
+                        className={`hover:bg-slate-50 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-emerald-50/40' : ''
+                        }`}
+                        onClick={() => setSelectedWeekForPhotos(item.mingguKe)}
+                      >
+                        <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>}
+                            <span>Minggu Ke-{item.mingguKe}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
+                          {item.rentangTanggal}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums text-slate-600">
+                          {item.targetKumulatif.toFixed(1)}%
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums font-bold text-slate-900">
+                          {item.realisasiKumulatif.toFixed(1)}%
+                        </td>
+                        <td
+                          className={`py-3 px-3 text-right font-mono tabular-nums font-semibold ${
+                            isPositive ? 'text-emerald-700' : 'text-rose-700'
+                          }`}
+                        >
+                          {isPositive ? `+${item.deviasi.toFixed(1)}%` : `${item.deviasi.toFixed(1)}%`}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums text-slate-800 font-medium">
+                          {formatRupiah(item.serapanBiayaKumulatif)}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {item.status === 'MENDAHULUI' ? 'Mendahului Jadwal' : item.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center no-print whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedWeekForPhotos(item.mingguKe);
+                              const el = document.getElementById('section-foto-mingguan');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all inline-flex items-center gap-1 ${
+                              weekPhotosCount > 0
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                : 'bg-slate-50 text-slate-600 border-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Camera className="w-3 h-3 text-emerald-700" />
+                            <span>{weekPhotosCount > 0 ? `${weekPhotosCount} Foto` : '+ Upload'}</span>
+                          </button>
+                        </td>
+                        <td className="py-3 px-3 text-slate-700 text-xs">
+                          {item.catatanEvaluasi}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+              <div>
+                <strong className="text-slate-900">Kesimpulan Evaluasi Mingguan:</strong> Kecepatan pengerjaan fisik berada dalam status prima (+1.5% dari target awal). Pengadaan material rangka atap dan semen mortar terlaksana tepat waktu.
+              </div>
+              <div className="font-mono font-bold text-slate-900 text-sm whitespace-nowrap">
+                Kumulatif Fisik: {summary.progresFisikKumulatif.toFixed(1)}%
+              </div>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-y border-slate-300 text-slate-800 font-semibold uppercase text-[11px]">
-                  <th className="py-2.5 px-3">Periode Minggu</th>
-                  <th className="py-2.5 px-3">Rentang Tanggal</th>
-                  <th className="py-2.5 px-3 text-right">Target Rencana (%)</th>
-                  <th className="py-2.5 px-3 text-right">Realisasi (%)</th>
-                  <th className="py-2.5 px-3 text-right">Deviasi (+/-)</th>
-                  <th className="py-2.5 px-3 text-right">Serapan Dana (Rp)</th>
-                  <th className="py-2.5 px-3 text-center">Status Jadwal</th>
-                  <th className="py-2.5 px-3">Catatan / Tindak Lanjut</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {weeklyRecaps.map((item) => {
-                  const isPositive = item.deviasi >= 0;
+          {/* 2. DOKUMENTASI FOTO PROGRES MINGGUAN (LAMPIRAN SPJ) */}
+          <div id="section-foto-mingguan" className="no-print space-y-4">
+            <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-400">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Dokumentasi Foto Fisik Lapangan (Lampiran SPJ)
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Upload foto progres untuk Minggu Ke-{selectedWeekForPhotos}. Foto otomatis terlampir dan tercetak pada SPJ Upah & LPJ.
+                  </p>
+                </div>
+              </div>
+
+              {/* Week Selector Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                <span className="text-[11px] font-semibold text-slate-400 mr-1">Pilih Minggu:</span>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((w) => {
+                  const count = progressPhotos.filter((p) => p.mingguKe === w).length;
+                  const isSelected = selectedWeekForPhotos === w;
                   return (
-                    <tr key={item.mingguKe} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
-                        Minggu Ke-{item.mingguKe}
-                      </td>
-                      <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
-                        {item.rentangTanggal}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono tabular-nums text-slate-600">
-                        {item.targetKumulatif.toFixed(1)}%
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono tabular-nums font-bold text-slate-900">
-                        {item.realisasiKumulatif.toFixed(1)}%
-                      </td>
-                      <td
-                        className={`py-3 px-3 text-right font-mono tabular-nums font-semibold ${
-                          isPositive ? 'text-emerald-700' : 'text-rose-700'
-                        }`}
-                      >
-                        {isPositive ? `+${item.deviasi.toFixed(1)}%` : `${item.deviasi.toFixed(1)}%`}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono tabular-nums text-slate-800 font-medium">
-                        {formatRupiah(item.serapanBiayaKumulatif)}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          {item.status === 'MENDAHULUI' ? 'Mendahului Jadwal' : item.status}
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => setSelectedWeekForPhotos(w)}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg whitespace-nowrap transition-all flex items-center gap-1 ${
+                        isSelected
+                          ? 'bg-emerald-500 text-slate-950 shadow-xs'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>W{w}</span>
+                      {count > 0 && (
+                        <span
+                          className={`text-[10px] px-1 rounded-full ${
+                            isSelected ? 'bg-slate-950 text-emerald-400' : 'bg-slate-700 text-white'
+                          }`}
+                        >
+                          {count}
                         </span>
-                      </td>
-                      <td className="py-3 px-3 text-slate-700 text-xs">
-                        {item.catatanEvaluasi}
-                      </td>
-                    </tr>
+                      )}
+                    </button>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            </div>
+
+            {/* Photo Uploader Component */}
+            <WeeklyPhotoUploader
+              mingguKe={selectedWeekForPhotos}
+              photos={progressPhotos}
+              onPhotosChange={(newPhotos) => {
+                // Keep photos from other weeks intact, update for this context
+                const otherWeekPhotos = progressPhotos.filter((p) => p.mingguKe !== selectedWeekForPhotos);
+                const updatedForThisWeek = newPhotos.filter((p) => p.mingguKe === selectedWeekForPhotos || !p.mingguKe).map(p => ({
+                  ...p,
+                  mingguKe: selectedWeekForPhotos,
+                }));
+                addProgressPhotos([...otherWeekPhotos, ...updatedForThisWeek]);
+              }}
+              title={`Dokumentasi Foto Progres Fisik Minggu Ke-${selectedWeekForPhotos}`}
+              subtitle="Pilih atau tarik beberapa foto lapangan sekaligus. Foto yang diunggah otomatis tersimpan dan ikut tercetak pada dokumen SPJ resmi."
+            />
           </div>
 
-          <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-            <div>
-              <strong className="text-slate-900">Kesimpulan Evaluasi Mingguan:</strong> Kecepatan pengerjaan fisik berada dalam status prima (+1.5% dari target awal). Pengadaan material rangka atap dan semen mortar terlaksana tepat waktu.
+          {/* 3. PRINTABLE FORMAL SPJ PHOTO DOCUMENTATION ATTACHMENT */}
+          <div className="hidden print:block space-y-6 pt-6 border-t-2 border-slate-800">
+            <div className="text-center border-b-2 border-slate-800 pb-3">
+              <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-600">
+                {projectInfo.dataSekolah?.namaSekolah?.toUpperCase() || projectInfo.namaInstansi.toUpperCase()}
+              </h3>
+              <h2 className="text-base font-bold uppercase tracking-tight text-slate-900 mt-0.5">
+                LAMPIRAN DOKUMENTASI FOTO FISIK PROGRES PEKERJAAN (SPJ)
+              </h2>
+              <p className="text-xs text-slate-700 mt-0.5">
+                Kegiatan: {projectInfo.namaProyek} · Periode Minggu Ke-{selectedWeekForPhotos} · TA {projectInfo.tahunAnggaran}
+              </p>
             </div>
-            <div className="font-mono font-bold text-slate-900 text-sm whitespace-nowrap">
-              Kumulatif Fisik: 65.5%
+
+            <div className="grid grid-cols-2 gap-4">
+              {progressPhotos
+                .filter((p) => p.mingguKe === selectedWeekForPhotos || progressPhotos.length <= 4)
+                .map((photo, idx) => (
+                  <div key={photo.id} className="border border-slate-400 p-2 rounded text-xs space-y-2">
+                    <div className="aspect-4/3 overflow-hidden bg-slate-100 flex items-center justify-center">
+                      <img
+                        src={photo.url}
+                        alt={photo.caption}
+                        className="w-full h-full object-cover rounded"
+                      />
+                    </div>
+                    <div className="border-t border-slate-300 pt-1.5 text-[11px] text-slate-800 font-medium">
+                      <p><strong>Foto #{idx + 1}:</strong> {photo.caption}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Minggu Ke-{photo.mingguKe} · Tanggal: {photo.tanggal || formatTanggalIndo(new Date().toISOString().split('T')[0])}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            {/* Tripartite Signatures for Physical Progress Photos */}
+            <div className="pt-8 grid grid-cols-3 gap-4 text-center text-xs text-slate-900">
+              <div>
+                <p>Mengetahui,</p>
+                <p className="font-bold">Penanggung Jawab / Kepala Sekolah</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline uppercase">
+                  {projectInfo.timP2sp?.penanggungJawab?.nama || projectInfo.namaPimpinan}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  NIP: {projectInfo.timP2sp?.penanggungJawab?.nipNik || '-'}
+                </p>
+              </div>
+
+              <div>
+                <p>Panitia Pembangunan (P2SP),</p>
+                <p className="font-bold">Ketua Tim P2SP</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline uppercase">
+                  {projectInfo.timP2sp?.ketuaP2sp?.nama || projectInfo.namaKetuaTPK}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {projectInfo.timP2sp?.ketuaP2sp?.jabatanAsal || 'Ketua Komite'}
+                </p>
+              </div>
+
+              <div>
+                <p>Diperiksa Teknis,</p>
+                <p className="font-bold">Pengawas Teknis Lapangan</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline uppercase">
+                  {projectInfo.timP2sp?.pengawas?.nama || 'Pengawas Lapangan'}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {projectInfo.timP2sp?.pengawas?.jabatanAsal || 'Tenaga Ahli Teknis'}
+                </p>
+              </div>
             </div>
           </div>
         </div>

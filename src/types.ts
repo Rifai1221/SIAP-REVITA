@@ -70,6 +70,14 @@ export interface WorkerHarian {
   keterangan?: string;
 }
 
+export interface ProgressPhotoItem {
+  id: string;
+  url: string; // Base64 data URL
+  caption: string;
+  tanggal: string;
+  mingguKe: number;
+}
+
 export interface PayrollHarianBatch {
   id: string;
   noSpj: string; // e.g. SPJ-UPAH/2026/W03
@@ -83,6 +91,7 @@ export interface PayrollHarianBatch {
   jenisKas: CashType;
   isBookedToBKU: boolean;
   bkuTransactionId?: string;
+  photos?: ProgressPhotoItem[];
 }
 
 export interface WorkerBoronganItem {
@@ -203,6 +212,7 @@ export interface WeeklyRecap {
   serapanBiayaKumulatif: number;
   status: 'SESUAI_JADWAL' | 'TERLAMBAT' | 'MENDAHULUI';
   catatanEvaluasi: string;
+  photos?: ProgressPhotoItem[];
 }
 
 export interface PersonilP2SP {
@@ -318,5 +328,59 @@ export interface ProjectFileBundle {
   weeklyRecaps: WeeklyRecap[];
   standardWages: StandardWageRate[];
   standardMaterials: StandardMaterialPrice[];
+}
+
+export interface SchoolWorkspaceMeta {
+  id?: string;
+  npsn: string;
+  namaSekolah: string;
+  jenjang: string;
+  paguAnggaran: number;
+  tahunAnggaran?: string;
+  kabupaten?: string;
+  hasPin?: boolean;
+  pin?: string;
+  pinHash?: string;
+  lastModified?: string;
+  createdAt?: string;
+  kabupatenKota?: string;
+  isPinProtected?: boolean;
+  lastActive?: string;
+  warnaTema?: string;
+  catatanFasilitator?: string;
+}
+
+export interface RevitaProjectFile {
+  fileSignature: string;
+  version: string;
+  exportedAt: string;
+  npsn: string;
+  namaSekolah: string;
+  paguAnggaran: number;
+  projectInfo: ProjectInfo;
+  transactions: CashTransaction[];
+  kwitansiList: Kwitansi[];
+  payrollHarian: PayrollHarianBatch[];
+  payrollBorongan: WorkerBoronganItem[];
+  dailyLogs: DailyWorkLog[];
+  weeklyRecaps: WeeklyRecap[];
+  wbsList: WBSItem[];
+  rabMaster: RABMasterItem[];
+  standardWages: StandardWageRate[];
+  standardMaterials: StandardMaterialPrice[];
+  summaryCheck?: {
+    totalPenerimaan: number;
+    totalPengeluaran: number;
+    saldoAkhir: number;
+    progresFisik: number;
+  };
+}
+
+export interface MultiSchoolBackupBundle {
+  fileSignature: string;
+  version: string;
+  exportedAt: string;
+  workspaces: SchoolWorkspaceMeta[];
+  schoolsData: Record<string, any>;
 }
 

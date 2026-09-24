@@ -10,6 +10,8 @@ import {
   Table,
   Layers,
   Award,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
 import { formatRupiah, formatTanggalIndo, terbilangRupiah } from '../utils/terbilang';
@@ -23,9 +25,10 @@ export const LPJReport: React.FC = () => {
     kwitansiList,
     payrollHarian,
     payrollBorongan,
+    progressPhotos,
   } = useProject();
 
-  const [activeSection, setActiveSection] = useState<'ALL' | 'BERITA_ACARA' | 'RAB' | 'BKU' | 'KWITANSI' | 'UPAH'>('ALL');
+  const [activeSection, setActiveSection] = useState<'ALL' | 'BERITA_ACARA' | 'RAB' | 'BKU' | 'KWITANSI' | 'UPAH' | 'FOTO'>('ALL');
 
   // Breakdown expenditures by category
   const materialExpenses = transactions
@@ -161,6 +164,17 @@ export const LPJReport: React.FC = () => {
             }`}
           >
             5. Rekap Honor Tukang
+          </button>
+          <button
+            onClick={() => setActiveSection('FOTO')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              activeSection === 'FOTO'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>6. Lampiran Foto SPJ ({progressPhotos.length})</span>
           </button>
         </div>
       </div>
@@ -659,6 +673,100 @@ export const LPJReport: React.FC = () => {
                     {projectInfo.timP2sp?.bendahara?.jabatanAsal || 'Bendahara P2SP'}
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* BAGIAN VI: DOKUMENTASI FOTO FISIK LAPANGAN (LAMPIRAN SPJ) */}
+        {(activeSection === 'ALL' || activeSection === 'FOTO') && (
+          <div className="space-y-6 pt-6 border-t-2 border-slate-800 print:page-break-before">
+            <div className="text-center">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 underline">
+                BAGIAN VI: LAMPIRAN DOKUMENTASI FOTO FISIK PELAKSANAAN PEKERJAAN (SPJ)
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Bukti visual realisasi capaian progres fisik di lapangan untuk pemeriksaan dan akuntabilitas LPJ
+              </p>
+            </div>
+
+            {progressPhotos.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4">
+                {progressPhotos.map((photo, idx) => (
+                  <div
+                    key={photo.id}
+                    className="border border-slate-400 p-2.5 rounded bg-white space-y-2"
+                  >
+                    <div className="aspect-4/3 overflow-hidden bg-slate-100 rounded border border-slate-300 flex items-center justify-center">
+                      <img
+                        src={photo.url}
+                        alt={photo.caption}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="text-xs pt-1.5 border-t border-slate-300">
+                      <div className="flex items-center justify-between font-bold text-slate-900 text-[11px]">
+                        <span>Foto #{idx + 1}</span>
+                        <span className="font-mono text-emerald-800 font-semibold text-[10px] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          Minggu Ke-{photo.mingguKe}
+                        </span>
+                      </div>
+                      <p className="text-slate-800 font-medium mt-1 text-[11px]">
+                        {photo.caption}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Tanggal: {photo.tanggal || formatTanggalIndo(new Date().toISOString().split('T')[0])}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 border border-dashed border-slate-400 rounded-lg">
+                <Camera className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-slate-700">Belum ada dokumentasi foto yang diunggah</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Upload foto progres fisik pada menu &quot;Monitoring &gt; Rekap Mingguan&quot; agar foto otomatis tercetak pada bagian ini.
+                </p>
+              </div>
+            )}
+
+            {/* Tripartite Signatures for Official Photo Verification */}
+            <div className="pt-8 grid grid-cols-3 gap-4 text-center text-xs text-slate-900 border-t border-slate-300">
+              <div>
+                <p>Mengetahui / Mengesahkan,</p>
+                <p className="font-bold">Kepala Sekolah / Penanggung Jawab</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline uppercase">
+                  {projectInfo.timP2sp?.penanggungJawab?.nama || projectInfo.namaPimpinan}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  NIP: {projectInfo.timP2sp?.penanggungJawab?.nipNik || '-'}
+                </p>
+              </div>
+
+              <div>
+                <p>Panitia Pembangunan (P2SP),</p>
+                <p className="font-bold">Ketua Tim P2SP</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline uppercase">
+                  {projectInfo.timP2sp?.ketuaP2sp?.nama || projectInfo.namaKetuaTPK}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {projectInfo.timP2sp?.ketuaP2sp?.jabatanAsal || 'Ketua Komite'}
+                </p>
+              </div>
+
+              <div>
+                <p>Diverifikasi Lapangan,</p>
+                <p className="font-bold">Pengawas Teknis P2SP</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline uppercase">
+                  {projectInfo.timP2sp?.pengawas?.nama || 'Pengawas Lapangan'}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {projectInfo.timP2sp?.pengawas?.jabatanAsal || 'Tenaga Ahli Teknis'}
+                </p>
               </div>
             </div>
           </div>

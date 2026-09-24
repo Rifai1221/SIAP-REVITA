@@ -29,6 +29,23 @@ import {
   parseRABFile,
   parseAHSPFile,
 } from '../utils/excelTemplateEngine';
+import {
+  generateStandardWagesTemplateExcel,
+  parseStandardWagesFile,
+  OFFICIAL_BOGOR_WAGES_2025,
+} from '../utils/standardWagesTemplateEngine';
+import {
+  generateStandardMaterialsTemplateExcel,
+  parseStandardMaterialsFile,
+  getAllOfficialBogorFlatMaterials,
+} from '../utils/standardMaterialsTemplateEngine';
+import {
+  generateOfficialWeeklyRecapTemplateExcel,
+  parseEnhancedWeeklyProgressFile,
+} from '../utils/weeklyRecapTemplateEngine';
+import { Berkas001RABModal } from './Berkas001RABModal';
+import { Berkas002AHSPModal } from './Berkas002AHSPModal';
+import { BerkasRekapMingguanModal } from './BerkasRekapMingguanModal';
 
 interface TechnicalDocsManagerProps {
   onNavigateToProgressSync?: () => void;
@@ -46,9 +63,11 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
     standardMaterials,
     addStandardWage,
     updateStandardWage,
+    updateStandardWages,
     deleteStandardWage,
     addStandardMaterial,
     updateStandardMaterial,
+    updateStandardMaterials,
     deleteStandardMaterial,
   } = useProject();
 
@@ -56,6 +75,9 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRABItem, setSelectedRABItem] = useState<RABMasterItem | null>(rabMaster[0] || null);
   const [uploadStatus, setUploadStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [is001RABModalOpen, setIs001RABModalOpen] = useState(false);
+  const [is002AHSPModalOpen, setIs002AHSPModalOpen] = useState(false);
+  const [isWeeklyRecapModalOpen, setIsWeeklyRecapModalOpen] = useState(false);
 
   // State untuk form tambah manual Upah Tenaga Kerja
   const [isAddingWage, setIsAddingWage] = useState(false);
@@ -79,6 +101,104 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rabFileInputRef = useRef<HTMLInputElement>(null);
   const ahspFileInputRef = useRef<HTMLInputElement>(null);
+  const wageFileInputRef = useRef<HTMLInputElement>(null);
+  const materialFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handler Upload Berkas Standar Upah Tukang (.xlsx / .xls / .csv)
+  const handleUploadWageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const result = await parseStandardWagesFile(file);
+      if (!result.success || result.wages.length === 0) {
+        setUploadStatus({
+          success: false,
+          message: result.message || 'Gagal membaca format upah tukang. Pastikan kolom memuat Uraian dan Harga.',
+        });
+        return;
+      }
+
+      updateStandardWages(result.wages);
+      setUploadStatus({
+        success: true,
+        message: result.message,
+      });
+      if (wageFileInputRef.current) wageFileInputRef.current.value = '';
+    } catch (err: any) {
+      setUploadStatus({
+        success: false,
+        message: `Gagal membaca berkas upah: ${err?.message || 'Format tidak sesuai template'}`,
+      });
+    }
+  };
+
+  // Handler Terapkan 16 Standar Upah Bogor 2025 sesuai berkas fisik
+  const handleApplyOfficialBogorWages = () => {
+    if (
+      window.confirm(
+        'Terapkan 16 Standar Harga Satuan Upah Kab/Kota Bogor Tahun 2025 (Mandor Rp211.379, Pekerja Rp174.748, dll) sesuai berkas fisik yang diupload?'
+      )
+    ) {
+      const newWages = OFFICIAL_BOGOR_WAGES_2025.map((w) => ({
+        id: `wage-bogor-${w.no}-${Date.now()}`,
+        role: w.role,
+        satuan: w.satuan,
+        harga: w.harga,
+        desc: `Standar Upah Kab/Kota Bogor 2025 (Perencana: DZIKRY IMAM MAJID,ST)`,
+      }));
+      updateStandardWages(newWages);
+      setUploadStatus({
+        success: true,
+        message: 'Berhasil menerapkan 16 Standar Harga Satuan Upah Kab/Kota Bogor Tahun 2025!',
+      });
+    }
+  };
+
+  // Handler Upload Berkas Standar Harga Bahan (.xlsx / .xls / .csv)
+  const handleUploadMaterialFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const result = await parseStandardMaterialsFile(file);
+      if (!result.success || result.materials.length === 0) {
+        setUploadStatus({
+          success: false,
+          message: result.message || 'Gagal membaca format bahan. Pastikan terdapat kolom Uraian, Satuan, dan Harga.',
+        });
+        return;
+      }
+
+      updateStandardMaterials(result.materials);
+      setUploadStatus({
+        success: true,
+        message: result.message,
+      });
+      if (materialFileInputRef.current) materialFileInputRef.current.value = '';
+    } catch (err: any) {
+      setUploadStatus({
+        success: false,
+        message: `Gagal membaca berkas bahan: ${err?.message || 'Format tidak sesuai template'}`,
+      });
+    }
+  };
+
+  // Handler Terapkan 88 Standar Bahan Bogor 2025 (10 Kategori) sesuai berkas fisik
+  const handleApplyOfficialBogorMaterials = () => {
+    if (
+      window.confirm(
+        'Terapkan 88 Standar Harga Satuan Bahan Kab/Kota Bogor Tahun 2025 lengkap 10 Kategori (Pasir & Batu, Semen, Kayu, Baja & Besi, Cat, Ubin, Gypsum, Atap & Kunci, Elektrikal, SMKK) sesuai berkas fisik?'
+      )
+    ) {
+      const newMaterials = getAllOfficialBogorFlatMaterials();
+      updateStandardMaterials(newMaterials);
+      setUploadStatus({
+        success: true,
+        message: `Berhasil menerapkan ${newMaterials.length} Standar Harga Bahan Kab/Kota Bogor Tahun 2025!`,
+      });
+    }
+  };
 
   // Filter list
   const filteredRAB = rabMaster.filter(
@@ -187,7 +307,7 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
     if (!file) return;
 
     try {
-      const parsed = await parseWeeklyProgressFile(file);
+      const parsed = await parseEnhancedWeeklyProgressFile(file, rabMaster);
       if (parsed.rows.length === 0) {
         setUploadStatus({
           success: false,
@@ -228,7 +348,7 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
       updateRABMaster(updated);
       setUploadStatus({
         success: true,
-        message: `Berhasil memproses ${parsed.rows.length} capaian item pekerjaan dari file. ${updatedCount} item RAB terkoneksi secara langsung!`,
+        message: `Berhasil memproses ${parsed.rows.length} capaian pekerjaan dari file Laporan Mingguan! ${updatedCount} item RAB diperbarui.`,
       });
 
       // Clear input
@@ -261,20 +381,37 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => generateRABTemplateExcel()}
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 border border-slate-300 transition-colors"
-              title="Unduh format tabel RAB Induk"
+              onClick={() => generateRABTemplateExcel(projectInfo)}
+              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-1.5 border border-emerald-300 transition-colors"
+              title="Unduh Berkas 001 RAB Standar Revitalisasi (.xlsx)"
             >
-              <Download className="w-3.5 h-3.5 text-slate-600" />
-              <span>Template RAB (.xlsx)</span>
+              <Download className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Template RAB (001)</span>
             </button>
             <button
-              onClick={() => generateLaporanMingguanTemplateExcel(rabMaster)}
+              onClick={() => generateAHSPTemplateExcel(projectInfo)}
+              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-1.5 border border-emerald-300 transition-colors"
+              title="Unduh Berkas 002 AHSP Koefisien Standar SNI (.xlsx)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Template AHSP (002)</span>
+            </button>
+            <button
+              onClick={() => generateLaporanMingguanTemplateExcel(rabMaster, projectInfo)}
               className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
-              title="Unduh format pengisian progres mingguan"
+              title="Unduh format pengisian progres mingguan resmi pengawas (Rekapitulasi Fisik & Manajemen)"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Template Laporan Mingguan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsWeeklyRecapModalOpen(true)}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 border border-slate-300 transition-colors"
+              title="Pratinjau & Cetak Dokumen Rekapitulasi Prestasi Laporan Mingguan Fisik"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-slate-600" />
+              <span>Pratinjau Rekap Mingguan</span>
             </button>
           </div>
         </div>
@@ -386,11 +523,21 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
               />
               <button
                 type="button"
-                onClick={() => generateRABTemplateExcel()}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 transition-colors"
+                onClick={() => generateRABTemplateExcel(projectInfo)}
+                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg flex items-center gap-1.5 border border-emerald-300 transition-all shadow-xs hover:shadow-sm"
+                title="Unduh Berkas 001 Format Standar RAB (.xlsx) dengan Kop Resmi, 12 Divisi, Rumus, Rekapitulasi & Pengesahan"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Template RAB</span>
+                <Download className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Template RAB (Berkas 001)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIs001RABModalOpen(true)}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 transition-colors"
+                title="Pratinjau & Cetak Dokumen Berkas 001 RAB"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-slate-600" />
+                <span>Pratinjau 001 RAB</span>
               </button>
               <label
                 htmlFor="upload-rab-file"
@@ -509,11 +656,21 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => generateAHSPTemplateExcel()}
-                  className="text-[11px] text-slate-600 hover:text-slate-900 bg-slate-100 px-2 py-1 rounded flex items-center gap-1 border border-slate-200"
+                  onClick={() => generateAHSPTemplateExcel(projectInfo)}
+                  className="text-[11px] text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-md font-bold flex items-center gap-1 border border-emerald-300 transition-colors shadow-2xs"
+                  title="Unduh Dokumen Berkas 002 Format Standar AHSP SNI (.xlsx) dengan Kop Resmi, Tenaga, Bahan, Alat, Rekapitulasi & Pengesahan"
                 >
-                  <Download className="w-3 h-3" />
-                  <span>Template</span>
+                  <Download className="w-3 h-3 text-emerald-700" />
+                  <span>Template Analisa (Berkas 002)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIs002AHSPModalOpen(true)}
+                  className="text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-md font-semibold flex items-center gap-1 border border-slate-300 transition-colors"
+                  title="Pratinjau & Cetak Dokumen Berkas 002 AHSP Standar Fisik"
+                >
+                  <BookOpen className="w-3 h-3 text-slate-600" />
+                  <span>Pratinjau 002</span>
                 </button>
                 <label
                   htmlFor="upload-ahsp-file"
@@ -660,18 +817,89 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
             {/* Box Upah Tenaga Kerja */}
             <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5 mb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-2.5 mb-3 gap-2">
                   <h4 className="font-bold text-slate-900 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
                     <span>Standar Upah Tenaga Kerja ({standardWages.length} Profesi)</span>
                   </h4>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="file"
+                      ref={wageFileInputRef}
+                      accept=".xlsx, .xls, .csv"
+                      onChange={handleUploadWageFile}
+                      className="hidden"
+                      id="upload-wage-file"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        generateStandardWagesTemplateExcel(
+                          {
+                            namaSekolah:
+                              projectInfo?.dataSekolah?.namaSekolah ||
+                              projectInfo?.namaInstansi ||
+                              'TK NURIADEEN CENDEKIA',
+                            kabupatenKota:
+                              projectInfo?.alamatLengkap?.kabupatenKota ||
+                              projectInfo?.kabupaten ||
+                              'KAB/KOTA BOGOR',
+                            provinsi:
+                              projectInfo?.alamatLengkap?.provinsi ||
+                              projectInfo?.provinsi ||
+                              'PROPINSI JAWA BARAT',
+                            tahunAnggaran: projectInfo?.tahunAnggaran || '2025',
+                            namaPerencana: 'DZIKRY IMAM MAJID,ST',
+                            namaKetuaP2SP:
+                              projectInfo?.timP2sp?.ketuaP2sp?.nama ||
+                              'DZIKRY IMAM MAJID,ST',
+                          },
+                          standardWages
+                        )
+                      }
+                      className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Download Template Format Daftar Harga Satuan Upah (.xlsx) Sesuai Berkas Fisik"
+                    >
+                      <Download className="w-3.5 h-3.5 text-blue-700" />
+                      <span>Download Template</span>
+                    </button>
+
+                    <label
+                      htmlFor="upload-wage-file"
+                      className="cursor-pointer px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Upload Berkas Daftar Harga Satuan Upah (.xlsx / .csv)"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Upah</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingWage(!isAddingWage)}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] flex items-center gap-1 border border-slate-300 shadow-2xs transition-colors"
+                    >
+                      <Plus className="w-3 h-3 text-slate-500" />
+                      <span>{isAddingWage ? 'Tutup' : 'Tambah'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Banner Sinkronisasi Cepat Standar Bogor 2025 */}
+                <div className="mb-3 p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div>
+                      <strong>Standar Upah Kab/Kota Bogor 2025:</strong> Format resmi 16 profesi (Mandor Rp211.379, Pekerja Rp174.748, dll).
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setIsAddingWage(!isAddingWage)}
-                    className="px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                    onClick={handleApplyOfficialBogorWages}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[10px] shrink-0 shadow-2xs transition-colors whitespace-nowrap"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{isAddingWage ? 'Tutup Form' : 'Tambah Upah'}</span>
+                    Terapkan 16 Profesi
                   </button>
                 </div>
 
@@ -688,9 +916,9 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
                         role: wageForm.role.trim(),
                         harga: parseFloat(wageForm.harga) || 0,
                         desc: wageForm.desc.trim() || 'Tenaga kerja lapangan',
-                        satuan: wageForm.satuan || 'HOK',
+                        satuan: wageForm.satuan || 'Hari',
                       });
-                      setWageForm({ role: '', harga: '', desc: '', satuan: 'HOK' });
+                      setWageForm({ role: '', harga: '', desc: '', satuan: 'Hari' });
                       setIsAddingWage(false);
                     }}
                     className="mb-3 p-3 bg-white border border-blue-200 rounded-xl space-y-2.5 shadow-2xs"
@@ -715,7 +943,7 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
                       </div>
                       <div>
                         <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                          Upah Harian / HOK (Rp)
+                          Upah Harian / Hari (Rp)
                         </label>
                         <input
                           type="number"
@@ -771,58 +999,142 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
                   </form>
                 )}
 
-                <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                  {standardWages.map((u) => (
-                    <div
-                      key={u.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200/80 hover:border-slate-300 transition-colors group"
-                    >
-                      <div className="pr-2">
-                        <strong className="text-slate-800 block text-xs">{u.role}</strong>
-                        <span className="text-[11px] text-slate-400 block">{u.desc || 'Tenaga kerja lapangan'}</span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-mono font-bold text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-xs">
-                          {formatRupiah(u.harga)} / {u.satuan || 'HOK'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Hapus tarif upah untuk "${u.role}"?`)) {
-                              deleteStandardWage(u.id);
-                            }
-                          }}
-                          className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors"
-                          title="Hapus tarif upah"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[360px] overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 text-slate-600">
+                      <tr>
+                        <th className="py-2 px-2.5 w-10 text-center font-semibold">No</th>
+                        <th className="py-2 px-3 font-semibold">Uraian Profesi</th>
+                        <th className="py-2 px-2.5 text-center font-semibold w-16">Satuan</th>
+                        <th className="py-2 px-3 text-right font-semibold">Harga (Rp)</th>
+                        <th className="py-2 px-2 w-8 text-center"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {standardWages.map((u, idx) => (
+                        <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2 px-2.5 text-center font-mono text-slate-400 text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2 px-3">
+                            <strong className="text-slate-900 block text-xs">{u.role}</strong>
+                            {u.desc && <span className="text-[10px] text-slate-400 block">{u.desc}</span>}
+                          </td>
+                          <td className="py-2 px-2.5 text-center font-mono text-slate-600 text-[11px]">
+                            {u.satuan || 'Hari'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 text-xs">
+                            {formatRupiah(u.harga)}
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Hapus tarif upah untuk "${u.role}"?`)) {
+                                  deleteStandardWage(u.id);
+                                }
+                              }}
+                              className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors"
+                              title="Hapus tarif upah"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
               <div className="pt-2 text-[11px] text-slate-400 border-t border-slate-200/60 mt-2">
-                * Menjadi acuan otomatis saat mengisi Daftar Hadir & Upah Tukang Harian (Payroll).
+                * Format berkas mengacu pada DAFTAR HARGA SATUAN UPAH (Perencana: DZIKRY IMAM MAJID,ST). Terhubung otomatis ke SPJ Payroll Harian.
               </div>
             </div>
 
             {/* Box Bahan Pokok & Material Konstruksi */}
             <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5 mb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-2.5 mb-3 gap-2">
                   <h4 className="font-bold text-slate-900 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
                     <span>Bahan Pokok & Material ({standardMaterials.length} Jenis)</span>
                   </h4>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="file"
+                      ref={materialFileInputRef}
+                      accept=".xlsx, .xls, .csv"
+                      onChange={handleUploadMaterialFile}
+                      className="hidden"
+                      id="upload-material-file"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        generateStandardMaterialsTemplateExcel(
+                          {
+                            namaSekolah:
+                              projectInfo?.dataSekolah?.namaSekolah ||
+                              projectInfo?.namaInstansi ||
+                              'TK NURIADEEN CENDEKIA',
+                            kabupatenKota:
+                              projectInfo?.alamatLengkap?.kabupatenKota ||
+                              projectInfo?.kabupaten ||
+                              'KAB/KOTA BOGOR',
+                            provinsi:
+                              projectInfo?.alamatLengkap?.provinsi ||
+                              projectInfo?.provinsi ||
+                              'PROPINSI JAWA BARAT',
+                            tahunAnggaran: projectInfo?.tahunAnggaran || '2025',
+                            namaPerencana: 'DZIKRY IMAM MAJID,ST',
+                          },
+                          standardMaterials
+                        )
+                      }
+                      className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Download Template Format Daftar Harga Satuan Bahan (.xlsx) Sesuai Berkas Fisik"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Download Template</span>
+                    </button>
+
+                    <label
+                      htmlFor="upload-material-file"
+                      className="cursor-pointer px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Upload Berkas Daftar Harga Satuan Bahan (.xlsx / .csv)"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Bahan</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingMaterial(!isAddingMaterial)}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] flex items-center gap-1 border border-slate-300 shadow-2xs transition-colors"
+                    >
+                      <Plus className="w-3 h-3 text-slate-500" />
+                      <span>{isAddingMaterial ? 'Tutup' : 'Tambah'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Banner Sinkronisasi Cepat Standar Bahan Bogor 2025 */}
+                <div className="mb-3 p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-xl text-[11px] text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <strong>Standar Bahan Kab/Kota Bogor 2025:</strong> 10 Kategori Lengkap (Pasir, Semen, Kayu, Besi, Cat, Ubin, Gypsum, Atap, Listrik, SMKK).
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setIsAddingMaterial(!isAddingMaterial)}
-                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                    onClick={handleApplyOfficialBogorMaterials}
+                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-[10px] shrink-0 shadow-2xs transition-colors whitespace-nowrap"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{isAddingMaterial ? 'Tutup Form' : 'Tambah Bahan'}</span>
+                    Terapkan 88 Bahan
                   </button>
                 </div>
 
@@ -913,6 +1225,7 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
                           <option value="LANTAI">LANTAI</option>
                           <option value="FINISHING">FINISHING</option>
                           <option value="MEKANIKAL">MEKANIKAL</option>
+                          <option value="MEP">MEP</option>
                         </select>
                       </div>
                     </div>
@@ -947,42 +1260,64 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
                   </form>
                 )}
 
-                <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                  {standardMaterials.map((b) => (
-                    <div
-                      key={b.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200/80 hover:border-slate-300 transition-colors group"
-                    >
-                      <div className="pr-2">
-                        <strong className="text-slate-800 block text-xs">{b.nama}</strong>
-                        <span className="text-[11px] text-slate-400 block">
-                          Satuan: 1 {b.satuan} {b.spesifikasi ? `• ${b.spesifikasi}` : ''}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-mono font-bold text-emerald-800 bg-emerald-50/70 px-2 py-0.5 rounded border border-emerald-200 text-xs">
-                          {formatRupiah(b.harga)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Hapus material "${b.nama}"?`)) {
-                              deleteStandardMaterial(b.id);
-                            }
-                          }}
-                          className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors"
-                          title="Hapus harga material"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[360px] overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 text-slate-600">
+                      <tr>
+                        <th className="py-2 px-2.5 w-10 text-center font-semibold">No</th>
+                        <th className="py-2 px-3 font-semibold">Uraian Bahan & Spesifikasi</th>
+                        <th className="py-2 px-2 text-center font-semibold w-20">Kategori</th>
+                        <th className="py-2 px-2.5 text-center font-semibold w-16">Satuan</th>
+                        <th className="py-2 px-3 text-right font-semibold">Harga (Rp)</th>
+                        <th className="py-2 px-2 w-8 text-center"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {standardMaterials.map((b, idx) => (
+                        <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2 px-2.5 text-center font-mono text-slate-400 text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2 px-3">
+                            <strong className="text-slate-900 block text-xs">{b.nama}</strong>
+                            {b.spesifikasi && (
+                              <span className="text-[10px] text-slate-400 block">{b.spesifikasi}</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700 font-mono">
+                              {b.kategori || 'STRUKTUR'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2.5 text-center font-mono text-slate-600 text-[11px]">
+                            {b.satuan}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-emerald-800 text-xs">
+                            {formatRupiah(b.harga)}
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Hapus material "${b.nama}"?`)) {
+                                  deleteStandardMaterial(b.id);
+                                }
+                              }}
+                              className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors"
+                              title="Hapus harga material"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
               <div className="pt-2 text-[11px] text-slate-400 border-t border-slate-200/60 mt-2">
-                * Menjadi acuan otomatis saat memecah RAB & Progres Mingguan menjadi Kwitansi Pembelian Harian.
+                * Format berkas mengacu pada DAFTAR HARGA SATUAN BAHAN (Perencana: DZIKRY IMAM MAJID,ST). Terhubung otomatis ke Kwitansi & AHSP.
               </div>
             </div>
           </div>
@@ -1004,19 +1339,31 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
             </p>
 
             {/* Tombol Unduh Template */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div>
                 <span className="text-xs font-bold text-slate-800 block">Belum punya template berkas?</span>
-                <span className="text-[11px] text-slate-500">Unduh format yang sudah sinkron dengan {rabMaster.length} item RAB</span>
+                <span className="text-[11px] text-slate-500">Unduh format rekapitulasi pengawas mingguan resmi yang sinkron dengan {rabMaster.length} item RAB</span>
               </div>
-              <button
-                type="button"
-                onClick={() => generateLaporanMingguanTemplateExcel(rabMaster)}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Unduh Format Excel</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => generateLaporanMingguanTemplateExcel(rabMaster, projectInfo)}
+                  className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
+                  title="Unduh Berkas Excel Rekapitulasi Laporan Mingguan Fisik & Manajemen"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Format Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsWeeklyRecapModalOpen(true)}
+                  className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 shadow-2xs transition-colors"
+                  title="Pratinjau & Cetak Dokumen Rekapitulasi Mingguan Fisik"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Pratinjau</span>
+                </button>
+              </div>
             </div>
 
             {/* Area Drag and Drop / Pilih File */}
@@ -1123,6 +1470,24 @@ export const TechnicalDocsManager: React.FC<TechnicalDocsManagerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Berkas 001 RAB */}
+      <Berkas001RABModal
+        isOpen={is001RABModalOpen}
+        onClose={() => setIs001RABModalOpen(false)}
+      />
+
+      {/* Modal Berkas 002 AHSP */}
+      <Berkas002AHSPModal
+        isOpen={is002AHSPModalOpen}
+        onClose={() => setIs002AHSPModalOpen(false)}
+      />
+
+      {/* Modal Rekapitulasi Laporan Mingguan */}
+      <BerkasRekapMingguanModal
+        isOpen={isWeeklyRecapModalOpen}
+        onClose={() => setIsWeeklyRecapModalOpen(false)}
+      />
     </div>
   );
 };

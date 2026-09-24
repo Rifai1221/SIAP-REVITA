@@ -39,7 +39,7 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col text-slate-800">
+    <div className="min-h-screen bg-slate-100 flex flex-col text-slate-800 w-full max-w-full overflow-x-hidden">
       {/* Top Bar Header */}
       <Navbar
         activeTab={activeTab}
@@ -52,7 +52,7 @@ const MainContent: React.FC = () => {
       />
 
       {/* Main Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-6 py-4 sm:py-6 min-w-0 box-border">
         {activeTab === 'overview' && (
           <DashboardOverview
             onNavigate={(tab) => setActiveTab(tab)}
@@ -78,7 +78,11 @@ const MainContent: React.FC = () => {
         )}
 
         {activeTab === 'rab_sync' && (
-          <RabProgressSyncModal onNavigateToReceipts={() => setActiveTab('receipts')} />
+          <RabProgressSyncModal
+            onNavigateToReceipts={() => setActiveTab('receipts')}
+            onNavigateToBKU={() => setActiveTab('cashbooks')}
+            onNavigateToPayroll={() => setActiveTab('payroll')}
+          />
         )}
 
         {activeTab === 'progress' && <ProgressRecap />}
