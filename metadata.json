@@ -1,0 +1,6 @@
+{
+  "name": "SIAP-Revita",
+  "description": "Aplikasi pembukuan kas umum, kas bank, kas tunai, rekap progres fisik bangunan, generator kwitansi material otomatis, payroll honor tukang harian/borongan, serta laporan pertanggungjawaban (LPJ) keuangan otomatis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

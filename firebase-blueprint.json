@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "SchoolWorkspace": {
+      "title": "School Workspace",
+      "description": "School profile metadata and settings for revitalization administration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "npsn": { "type": "string" },
+        "namaSekolah": { "type": "string" },
+        "jenjang": { "type": "string" },
+        "paguAnggaran": { "type": "number" },
+        "tahunAnggaran": { "type": "string" },
+        "kabupaten": { "type": "string" },
+        "hasPin": { "type": "boolean" },
+        "pinHash": { "type": "string" },
+        "lastModified": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "npsn", "namaSekolah"]
+    },
+    "SchoolData": {
+      "title": "School Data",
+      "description": "Comprehensive accounting, receipts, payroll, and technical data for a school workspace",
+      "type": "object",
+      "properties": {
+        "npsn": { "type": "string" },
+        "projectInfo": { "type": "object" },
+        "transactions": { "type": "array" },
+        "kwitansiList": { "type": "array" },
+        "payrollHarian": { "type": "array" },
+        "payrollBorongan": { "type": "array" },
+        "wbsList": { "type": "array" },
+        "rabMaster": { "type": "array" },
+        "dailyLogs": { "type": "array" },
+        "weeklyRecaps": { "type": "array" },
+        "standardWages": { "type": "array" },
+        "standardMaterials": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["npsn"]
+    }
+  },
+  "firestore": {
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "SchoolWorkspace" },
+      "description": "Metadata for each registered school workspace"
+    },
+    "/schools_data/{npsn}": {
+      "schema": { "$ref": "SchoolData" },
+      "description": "Full transactional, kwitansi, and accounting ledger data for a specific school"
+    }
+  }
+}
